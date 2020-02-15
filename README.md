@@ -17,12 +17,22 @@ Some simplifications were made to the data to speed up data cleaning.
  From: https://www.nature.com/articles/s41591-018-0213-5.pdf
 A set of 48 variables, including:
 - demographics
-- Elixhauser premorbid status19
+    * Admissions Table (Do any of these matter? Excluded for now.)
+        * Language
+        * Religion
+        * Marital_status
+        * Ethnicity
+    * Patients Table
+        * Gender
+        * DOB
+- Elixhauser premorbid status
+    * Generated from pypi `icd` package
+    * Requires diagnosis information
 - vital signs
 - laboratory values
 - fluids
 - vasopressors received
--fluid balance
+- fluid balance
 
 Patients’ data were coded
 as multidimensional discrete time series with 4-h time steps. Data variables with

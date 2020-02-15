@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+Byte# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -130,3 +130,6 @@ dmypy.json
 
 # IDE artifacts
 .idea/
+
+# Data
+data/
