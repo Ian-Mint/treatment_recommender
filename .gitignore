@@ -133,3 +133,6 @@ dmypy.json
 
 # Data
 data/
+
+# Secure information
+pre_processing/db_tools.py
