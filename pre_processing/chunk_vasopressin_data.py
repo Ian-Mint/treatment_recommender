@@ -2,6 +2,7 @@
 # coding: utf-8
 import pandas as pd
 import numpy as np
+import pickle
 
 from pre_processing.pre_process import VasopressinTimeStepsDf, timestamp_to_int_seconds_series
 from pre_processing.db_tools import *
@@ -22,3 +23,6 @@ vasopressin_events = VasopressinTimeStepsDf(vasopressin_events)
 vasopressin_events.process(sepsis_admissions)
 
 vasopressin_chunked = vasopressin_events.chunkify(sepsis_admissions, period_seconds)
+
+with open('../data/vasopressin_chunked.pkl', 'wb') as f:
+    pickle.dump(vasopressin_chunked, f)

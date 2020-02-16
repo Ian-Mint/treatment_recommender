@@ -1,7 +1,8 @@
 import pandas as pd
+import numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
-from typing import List
+from typing import List, Tuple
 
 
 class TimeStepsDf(pd.DataFrame):
@@ -60,22 +61,24 @@ class VasopressinTimeStepsDf(TimeStepsDf):
         vasopressin_chunked = apply_parallel(gr,
                                              get_vasopressin_by_chunk,
                                              ref_df=time_chunks_ref,
-                                             groupby_header='hadm_id',
                                              period=self.period)
         return vasopressin_chunked
 
 
-def get_vasopressin_by_chunk(df: pd.DataFrame,
+def get_vasopressin_by_chunk(args,
                              ref_df: pd.DataFrame,
-                             groupby_header: str,
-                             period: int, ) -> pd.Series:
+                             period: int, ) -> Tuple[int, np.ndarray]:
     """
 
-    :param df: the group passed by `pd.apply`
+    :param args: [0] The group name, [1] the dataframe on which to operate
+    :param period: The chunk period in seconds
     :param ref_df: a series indexed by `groupby_header`, which contains the total number of chunks
-    :param groupby_header: The header by which `df` was grouped
     """
-    hadm_id = get_groupby_id(df, groupby_header)
+    hadm_id = args[0]
+    assert isinstance(hadm_id, int)
+    df = args[1]
+    assert isinstance(df, pd.DataFrame)
+
     num_chunks = ref_df.loc[hadm_id].item()
     chunked_amount = []
 
@@ -90,7 +93,7 @@ def get_vasopressin_by_chunk(df: pd.DataFrame,
 
         chunked_amount.append(amount)
 
-    return pd.Series(chunked_amount)
+    return hadm_id, np.array(chunked_amount)
 
 
 def amount_if_surrounds_chunk(current_chunk, df):
@@ -157,5 +160,17 @@ def timestamp_to_int_seconds_series(s: pd.Series):
 
 def apply_parallel(gr, func, **kwargs):
     with Pool(cpu_count()) as p:
-        ret_list = p.map(partial(func, **kwargs), [group for _, group in gr])
-    return pd.concat(ret_list)
+        ret_list = p.map(partial(func, **kwargs), [(name, df) for name, df in gr])
+    return dict(ret_list)
+
+
+def apply_parallel_debug(gr, func, **kwargs):
+    """
+    Not actually parallel, used so that breakpoints can be set in `func`
+    :param gr:
+    :param func:
+    :param kwargs:
+    :return:
+    """
+    ret_list = map(partial(func, **kwargs), [(name, df) for name, df in gr])
+    return dict(ret_list)
