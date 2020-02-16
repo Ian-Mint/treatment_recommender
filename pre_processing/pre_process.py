@@ -1,5 +1,6 @@
 import pandas as pd
 from multiprocessing import Pool, cpu_count
+from functools import partial
 from typing import List
 
 
@@ -56,10 +57,11 @@ class VasopressinTimeStepsDf(TimeStepsDf):
         time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
 
         gr = self.groupby('hadm_id')[['hadm_id', 'amount', 'rate', 'starttime', 'endtime']]
-        vasopressin_chunked = gr.apply(get_vasopressin_by_chunk,
-                                       ref_df=time_chunks_ref,
-                                       groupby_header='hadm_id',
-                                       period=self.period)
+        vasopressin_chunked = apply_parallel(gr,
+                                             get_vasopressin_by_chunk,
+                                             ref_df=time_chunks_ref,
+                                             groupby_header='hadm_id',
+                                             period=self.period)
         return vasopressin_chunked
 
 
@@ -153,7 +155,7 @@ def timestamp_to_int_seconds_series(s: pd.Series):
     return s.astype(int) // 1_000_000_000
 
 
-def apply_parallel(dfGrouped, func):
+def apply_parallel(gr, func, **kwargs):
     with Pool(cpu_count()) as p:
-        ret_list = p.map(func, [group for name, group in dfGrouped])
+        ret_list = p.map(partial(func, **kwargs), [group for _, group in gr])
     return pd.concat(ret_list)
