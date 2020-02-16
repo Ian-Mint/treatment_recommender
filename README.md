@@ -38,3 +38,12 @@ Patients’ data were coded
 as multidimensional discrete time series with 4-h time steps. Data variables with
 multiple measurements within a 4-h time step were averaged (for example, heart
 rate) or summed (for example, urine output) as appropriate
+
+## Processed data
+
+### Vasopressor
+
+`data/vasopressin_chunked.pkl`
+
+`dict` with `keys=hadm_id` and value is a `numpy` array representing the amount of Vasopressin administered in 4-hour
+chunks. This excludes CareVue data.
