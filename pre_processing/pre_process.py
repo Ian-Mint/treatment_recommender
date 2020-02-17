@@ -4,6 +4,9 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 from typing import List, Tuple
 
+from pre_processing.config import period_seconds
+from pre_processing.db_tools import connection
+
 
 class TimeStepsDf(pd.DataFrame):
     @staticmethod
@@ -174,3 +177,15 @@ def apply_parallel_debug(gr, func, **kwargs):
     """
     ret_list = map(partial(func, **kwargs), [(name, df) for name, df in gr])
     return dict(ret_list)
+
+
+def load_data():
+    global sepsis_admissions, sepsis_inputevents_mv
+    sepsis_admissions = pd.read_sql("select * from sepsis_admissions_data", connection)
+    sepsis_inputevents_mv = pd.read_sql("select * from sepsis_inputevents_mv", connection)
+    item_ids = pd.read_sql("select itemid, label from d_items", connection)
+    sepsis_admissions['total_time'] = sepsis_admissions['dischtime'] - sepsis_admissions['admittime']
+    sepsis_admissions['time_chunks'] = (
+                timestamp_to_int_seconds_series(sepsis_admissions['total_time']) // period_seconds + 1)
+
+    return sepsis_admissions, sepsis_inputevents_mv
