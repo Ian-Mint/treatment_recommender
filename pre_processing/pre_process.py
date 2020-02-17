@@ -114,6 +114,36 @@ class TimeStepsDf(pd.DataFrame):
         raise NotImplementedError()
 
 
+class FluidTimeStepsDf(TimeStepsDf):
+    """
+    Implements methods to chunk fluid input
+    """
+    def chunkify(self, sepsis_admissions, period):
+        time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
+
+        gr = self.groupby('hadm_id')
+        fluids_chunked = apply_parallel(gr,
+                                        self.chunk_group_worker,
+                                        ref_df=time_chunks_ref,
+                                        period=period)
+        return fluids_chunked
+
+    @staticmethod
+    def amount_if_fully_contained_in_chunk(current_chunk, df):
+        pass
+
+    @staticmethod
+    def amount_if_end_in_chunk_but_not_start(current_chunk, df):
+        pass
+
+    @staticmethod
+    def amount_if_start_in_chunk_but_not_end(current_chunk, df):
+        pass
+
+    @staticmethod
+    def amount_if_surrounds_chunk(current_chunk, df):
+        pass
+
 class VasopressinTimeStepsDf(TimeStepsDf):
     """
     Implements methods to chunk vasopressin data
