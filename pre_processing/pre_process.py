@@ -94,9 +94,10 @@ class TimeStepsDf(pd.DataFrame):
         return groupby_id.array[0]
 
     @staticmethod
-    @abstractmethod
     def amount_if_fully_contained_in_chunk(current_chunk, df):
-        raise NotImplementedError()
+        full_in_idx = both_in(df, ['starttime', 'endtime'], current_chunk)
+        amount = df.loc[full_in_idx, 'amount'].sum()
+        return amount
 
     @staticmethod
     @abstractmethod
@@ -114,10 +115,16 @@ class TimeStepsDf(pd.DataFrame):
         raise NotImplementedError()
 
 
+# Define units and conversion for fluids
+amount_units = {'ml': 1}
+rate_units = {'mL/hour': 1, 'mL/min': 60}
+
+
 class FluidTimeStepsDf(TimeStepsDf):
     """
     Implements methods to chunk fluid input
     """
+
     def chunkify(self, sepsis_admissions, period):
         time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
 
@@ -129,10 +136,6 @@ class FluidTimeStepsDf(TimeStepsDf):
         return fluids_chunked
 
     @staticmethod
-    def amount_if_fully_contained_in_chunk(current_chunk, df):
-        pass
-
-    @staticmethod
     def amount_if_end_in_chunk_but_not_start(current_chunk, df):
         pass
 
@@ -143,6 +146,7 @@ class FluidTimeStepsDf(TimeStepsDf):
     @staticmethod
     def amount_if_surrounds_chunk(current_chunk, df):
         pass
+
 
 class VasopressinTimeStepsDf(TimeStepsDf):
     """
@@ -183,12 +187,6 @@ class VasopressinTimeStepsDf(TimeStepsDf):
         amount = sum(end_in_df['rate'] * end_in_df['timediff'] / 3600)
         return amount
 
-    @staticmethod
-    def amount_if_fully_contained_in_chunk(current_chunk, df):
-        full_in_idx = both_in(df, ['starttime', 'endtime'], current_chunk)
-        amount = df.loc[full_in_idx, 'amount'].sum()
-        return amount
-
 
 def both_in(df, columns: List[str], comps: List[int]) -> pd.Series:
     assert len(comps) == 2
@@ -218,7 +216,8 @@ def surrounds(df, columns: List[str], comps: List[int]) -> pd.Series:
     return starts_before_chunk & ends_after_chunk
 
 
-def timestamp_to_int_seconds_series(s: pd.Series):
+def timestamp_to_int_seconds_series(s: pd.Series) -> pd.Series:
+    # TODO: error in some version of pandas - needs more investigation
     return s.astype(int) // 1_000_000_000
 
 
@@ -231,21 +230,48 @@ def apply_parallel(gr, func, **kwargs):
 def debug_apply_parallel(gr, func, **kwargs):
     """
     Not actually parallel, used so that breakpoints can be set in `func`
-    :param gr:
-    :param func:
-    :param kwargs:
-    :return:
     """
     ret_list = map(partial(func, **kwargs), [(name, df) for name, df in gr])
     return dict(ret_list)
 
 
-def load_data():
+def load_admissions():
     sepsis_admissions = pd.read_sql("select * from sepsis_admissions_data", connection)
-    sepsis_inputevents_mv = pd.read_sql("select * from sepsis_inputevents_mv", connection)
-    item_ids = pd.read_sql("select itemid, label from d_items", connection)
     sepsis_admissions['total_time'] = sepsis_admissions['dischtime'] - sepsis_admissions['admittime']
     sepsis_admissions['time_chunks'] = (
             timestamp_to_int_seconds_series(sepsis_admissions['total_time']) // period_seconds + 1)
 
-    return sepsis_admissions, sepsis_inputevents_mv
+    return sepsis_admissions
+
+
+def load_sepsis_inputevents_mv():
+    sepsis_inputevents_mv = pd.read_sql("select * from sepsis_inputevents_mv", connection)
+    return sepsis_inputevents_mv
+
+
+def load_sepsis_fluid_events_mv():
+    query = """
+        select
+            im.hadm_id,
+            im.starttime,
+            im.endtime,
+            im.itemid,
+            im.amount,
+            im.amountuom,
+            im.rate,
+            im.rateuom,
+            im.orderid,
+            im.linkorderid
+        from inputevents_mv im
+        inner join sepsis_admissions sa on
+            im.hadm_id = sa.hadm_id
+        inner join itemid_fluid_intake_mv ifim on 
+            im.itemid = ifim.itemid;
+    """
+    sepsis_fluid_events = pd.read_sql(query, connection)
+
+    # This serves to remove pre-admission intake - only 4 events
+    drop_index = sepsis_fluid_events.loc[sepsis_fluid_events['amountuom'] == 'L'].index
+    sepsis_fluid_events.drop(index=drop_index, inplace=True)
+
+    return sepsis_fluid_events

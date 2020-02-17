@@ -8,6 +8,9 @@
 --ml/hr: include 10 records ,itemid = 227536, KCl (CRRT) , it should not be included
 --By Xiaoli Liu
 --2017.3.5
+
+-- Uom updated by Ian Pegg
+-- 2020.02.17
 --------------------------------------------------------------------
 
 DROP MATERIALIZED VIEW IF EXISTS itemid_fluid_intake_mv CASCADE;
@@ -25,6 +28,9 @@ WHERE ordercategoryname in (
       , '16-Pre Admission'
       , '05-Med Bolus'
 )
-AND amountuom = 'mL'
+AND (   amountuom = 'mL'
+     OR amountuom = 'ml'
+     OR rateuom = 'mL/hour'
+     OR rateuom = 'mL/min')
 GROUP BY itemid
 order BY itemid
