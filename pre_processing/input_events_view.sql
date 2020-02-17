@@ -1,3 +1,4 @@
+drop materialized view sepsis_inputevents_mv;
 create materialized view sepsis_inputevents_mv as
     select
         imv.hadm_id,
@@ -9,7 +10,10 @@ create materialized view sepsis_inputevents_mv as
         imv.rate,
         imv.rateuom,
         imv.orderid,
-        imv.linkorderid
+        imv.linkorderid,
+        imv.totalamount,
+        imv.totalamountuom,
+        imv.statusdescription
     from inputevents_mv imv
 inner join sepsis_admissions sa on
     imv.hadm_id = sa.hadm_id

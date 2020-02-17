@@ -47,3 +47,5 @@ rate) or summed (for example, urine output) as appropriate
 
 `dict` with `keys=hadm_id` and value is a `numpy` array representing the amount of Vasopressin administered in 4-hour
 chunks. This excludes CareVue data.
+
+TODO: consider changing start time from admission start to sepsis diagnosis start.
