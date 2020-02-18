@@ -9,7 +9,7 @@ from pre_processing.config import period_seconds
 from pre_processing.db_tools import connection
 
 
-class TimeStepsDf:
+class TimeSteps:
     def __init__(self, sepsis_admissions: pd.DataFrame):
         self.df = pd.DataFrame(self.load_df())
         self.sepsis_admissions = sepsis_admissions
@@ -115,25 +115,45 @@ class TimeStepsDf:
         return amount
 
     @staticmethod
-    @abstractmethod
-    def amount_if_end_in_chunk_but_not_start(current_chunk, df):
-        raise NotImplementedError()
-
-    @staticmethod
-    @abstractmethod
-    def amount_if_start_in_chunk_but_not_end(current_chunk, df):
-        raise NotImplementedError()
-
-    @staticmethod
-    @abstractmethod
     def amount_if_surrounds_chunk(current_chunk, df):
-        raise NotImplementedError()
+        surrounds_idx = surrounds(df, ['starttime', 'endtime'], current_chunk)
+        surrounds_df = df.loc[surrounds_idx, ['rate']]
+        chunk_length = current_chunk[1] - current_chunk[0]
+        amount = sum(surrounds_df['rate'] * chunk_length / 3600)
+        return amount
+
+    @staticmethod
+    def amount_if_start_in_chunk_but_not_end(current_chunk, df):
+        start_in_idx = first_in(df, ['starttime', 'endtime'], current_chunk)
+        start_in_df = df.loc[start_in_idx, ['starttime', 'rate']]
+        start_in_df['timediff'] = current_chunk[1] - start_in_df['starttime']
+        amount = sum(start_in_df['rate'] * start_in_df['timediff'] / 3600)
+        return amount
+
+    @staticmethod
+    def amount_if_end_in_chunk_but_not_start(current_chunk, df):
+        end_in_idx = second_in(df, ['starttime', 'endtime'], current_chunk)
+        end_in_df = df.loc[end_in_idx, ['endtime', 'rate']]
+        end_in_df['timediff'] = end_in_df['endtime'] - current_chunk[0]
+        amount = sum(end_in_df['rate'] * end_in_df['timediff'] / 3600)
+        return amount
+
+    def chunkify(self, period):
+        time_chunks_ref = self.sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
+
+        gr = self.df.groupby('hadm_id')[['hadm_id', 'amount', 'rate', 'starttime', 'endtime']]
+        df_chunked = apply_parallel(gr,
+                                    self.chunk_group_worker,
+                                    ref_df=time_chunks_ref,
+                                    period=period)
+        return df_chunked
 
 
-class FluidTimeStepsDf(TimeStepsDf):
+class FluidTimeSteps(TimeSteps):
     """
     Implements methods to chunk fluid input
     """
+
     def load_df(self):
         query = """
             select
@@ -160,10 +180,11 @@ class FluidTimeStepsDf(TimeStepsDf):
         self.remove_pre_admission_intake()
         self.convert_rate_to_ml_hr()
         self.convert_ml_kg_hr_to_ml_hr()
-        super(FluidTimeStepsDf, self).process()
+        self.add_rate_if_none()
+        super(FluidTimeSteps, self).process()
 
     def remove_pre_admission_intake(self):
-        drop_index = self.df.loc[self['amountuom'] == 'L'].index
+        drop_index = self.df.loc[self.df['amountuom'] == 'L'].index
         self.df.drop(index=drop_index, inplace=True)
 
     def convert_rate_to_ml_hr(self):
@@ -173,40 +194,18 @@ class FluidTimeStepsDf(TimeStepsDf):
 
     def convert_ml_kg_hr_to_ml_hr(self):
         df_weight_rate_idx = (self.df['rateuom'] == 'mL/kg/hour')
-        self.df.loc[df_weight_rate_idx, 'rate'] = self.df.loc[df_weight_rate_idx, 'rate'] * self.df.loc[df_weight_rate_idx, 'patientweight']
+        self.df.loc[df_weight_rate_idx, 'rate'] = self.df.loc[df_weight_rate_idx, 'rate'] * self.df.loc[
+            df_weight_rate_idx, 'patientweight']
         self.df.loc[df_weight_rate_idx, 'rateuom'] = 'mL/hour'
 
-    def chunkify(self, sepsis_admissions, period):
-        time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
-
-        gr = self.df.groupby('hadm_id')
-        fluids_chunked = apply_parallel(gr,
-                                        self.chunk_group_worker,
-                                        ref_df=time_chunks_ref,
-                                        period=period)
-        return fluids_chunked
-
-    @staticmethod
-    def amount_if_end_in_chunk_but_not_start(current_chunk, df):
-        end_in_idx = second_in(df, ['starttime', 'endtime'], current_chunk)
-        end_in_df = df.loc[end_in_idx, ['endtime', 'rate']]
-        end_in_df['timediff'] = end_in_df['endtime'] - current_chunk[0]
-
-        amount = 0
-        amount += sum(end_in_df.loc[end_in_df['rate'].isna(), 'amount'])
-        amount = sum(end_in_df['rate'] * end_in_df['timediff'] / 3600)
-        return amount
-
-    @staticmethod
-    def amount_if_start_in_chunk_but_not_end(current_chunk, df):
-        pass
-
-    @staticmethod
-    def amount_if_surrounds_chunk(current_chunk, df):
-        pass
+    def add_rate_if_none(self):
+        df_no_rate = self.df['rate'].isna()
+        timediff = timestamp_to_int_seconds_series(self.df['endtime'] - self.df['starttime'])
+        self.df.loc[df_no_rate, 'rate'] = (self.df.loc[df_no_rate, 'amount'] / timediff.loc[df_no_rate]) / 3600
+        self.df.loc[df_no_rate, 'rateuom'] = 'mL/hour'
 
 
-class VasopressinTimeStepsDf(TimeStepsDf):
+class VasopressinTimeSteps(TimeSteps):
     """
     Implements methods to chunk vasopressin data
     """
@@ -218,40 +217,6 @@ class VasopressinTimeStepsDf(TimeStepsDf):
                 itemid in (1136, 2445, 30051, 222315)
         """
         return pd.read_sql(query, connection)
-
-    def chunkify(self, sepsis_admissions, period):
-        time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
-
-        gr = self.df.groupby('hadm_id')[['hadm_id', 'amount', 'rate', 'starttime', 'endtime']]
-        vasopressin_chunked = apply_parallel(gr,
-                                             self.chunk_group_worker,
-                                             ref_df=time_chunks_ref,
-                                             period=period)
-        return vasopressin_chunked
-
-    @staticmethod
-    def amount_if_surrounds_chunk(current_chunk, df):
-        surrounds_idx = surrounds(df, ['starttime', 'endtime'], current_chunk)
-        surrounds_df = df.loc[surrounds_idx, ['rate']]
-        chunk_length = current_chunk[1] - current_chunk[0]
-        amount = sum(surrounds_df['rate'] * chunk_length / 3600)
-        return amount
-
-    @staticmethod
-    def amount_if_start_in_chunk_but_not_end(current_chunk, df):
-        start_in_idx = first_in(df, ['starttime', 'endtime'], current_chunk)
-        start_in_df = df.loc[start_in_idx, ['starttime', 'rate']]
-        start_in_df['timediff'] = current_chunk[1] - start_in_df['starttime']
-        amount = sum(start_in_df['rate'] * start_in_df['timediff'] / 3600)
-        return amount
-
-    @staticmethod
-    def amount_if_end_in_chunk_but_not_start(current_chunk, df):
-        end_in_idx = second_in(df, ['starttime', 'endtime'], current_chunk)
-        end_in_df = df.loc[end_in_idx, ['endtime', 'rate']]
-        end_in_df['timediff'] = end_in_df['endtime'] - current_chunk[0]
-        amount = sum(end_in_df['rate'] * end_in_df['timediff'] / 3600)
-        return amount
 
 
 def both_in(df, columns: List[str], comps: List[int]) -> pd.Series:
@@ -308,4 +273,3 @@ def load_admissions():
             timestamp_to_int_seconds_series(sepsis_admissions['total_time']) // period_seconds + 1)
 
     return sepsis_admissions
-
