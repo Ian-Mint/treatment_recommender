@@ -3,17 +3,45 @@ import numpy as np
 from multiprocessing import Pool, cpu_count
 from functools import partial
 from typing import List, Tuple
-from abc import abstractmethod, ABC
+from abc import abstractmethod
 
 from pre_processing.config import period_seconds
 from pre_processing.db_tools import connection
 
 
-class TimeStepsDf(pd.DataFrame):
-    @classmethod
-    def time_norm(cls,
+class TimeStepsDf:
+    def __init__(self, sepsis_admissions: pd.DataFrame):
+        self.df = pd.DataFrame(self.load_df())
+        self.sepsis_admissions = sepsis_admissions
+        self.process()
+
+    def drop_if_endtime_before_starttime(self):
+        endtime_before_starttime_idx = self.df[self.df['endtime'] < self.df['starttime']].index
+        self.df.drop(index=endtime_before_starttime_idx, inplace=True)
+
+    def __instancecheck__(self, instance):
+        result = True
+        result &= isinstance(instance, type(self))
+        result &= isinstance(instance, pd.DataFrame)
+        return result
+
+    def process(self):
+        """
+        Performs data cleaning and processing steps
+        """
+        self.drop_if_endtime_before_starttime()
+
+        gr = self.df.groupby('hadm_id')[['hadm_id', 'starttime', 'endtime']]
+        result = gr.apply(
+            self.time_norm,
+            groupby_header='hadm_id',
+            modifier_header='admittime',
+            operate_on_header=['starttime', 'endtime']
+        )
+        self.df[['starttime', 'endtime']] = timestamp_to_int_seconds_series(result)
+
+    def time_norm(self,
                   df: pd.DataFrame,
-                  modifier_df: pd.DataFrame,
                   groupby_header: str,
                   modifier_header: str,
                   operate_on_header: List[str]) -> pd.DataFrame:
@@ -23,14 +51,13 @@ class TimeStepsDf(pd.DataFrame):
         group passed as df.
 
         :param operate_on_header: The list of `df` headers on which to operate
-        :param modifier_df: Must have one column titled the same as `modifier header` and one the same as `groupby_header`
-                            Values under `groupby_header` must be unique or an `AssertionError` will be raised.
         :param df: The parameter passed by the pandas `groupby` function
         :param modifier_header: The header of the modifier to be applied to `df`
         :param groupby_header: The header by which `df` was grouped
         :return: `df` minus the modifier value
         """
-        hadm_id = cls.get_groupby_id(df, groupby_header)
+        modifier_df = self.sepsis_admissions
+        hadm_id = self.get_groupby_id(df, groupby_header)
 
         modifier = modifier_df.loc[modifier_df[groupby_header] == hadm_id, modifier_header].array
         if not len(modifier) == 1:
@@ -38,22 +65,6 @@ class TimeStepsDf(pd.DataFrame):
                 f"The length of the modifier for group {df[groupby_header]} of header {groupby_header} equals {len(modifier)}"
             )
         return df[operate_on_header] - modifier[0]
-
-    def process(self, sepsis_admissions: pd.DataFrame) -> None:
-        """
-        Converts starttime and endtime timestamps from dates to seconds since admission
-
-        :param sepsis_admissions: A DataFrame where the admittime for each patient is used as a reference
-        """
-        gr = self.groupby('hadm_id')[['hadm_id', 'starttime', 'endtime']]
-        result = gr.apply(
-            self.time_norm,
-            modifier_df=sepsis_admissions,
-            groupby_header='hadm_id',
-            modifier_header='admittime',
-            operate_on_header=['starttime', 'endtime']
-        )
-        self[['starttime', 'endtime']] = timestamp_to_int_seconds_series(result)
 
     @classmethod
     def chunk_group_worker(cls,
@@ -87,6 +98,10 @@ class TimeStepsDf(pd.DataFrame):
 
         return hadm_id, np.array(chunked_amount)
 
+    @abstractmethod
+    def load_df(self):
+        raise NotImplementedError()
+
     @staticmethod
     def get_groupby_id(df, groupby_header):
         groupby_id = df[groupby_header]
@@ -115,20 +130,56 @@ class TimeStepsDf(pd.DataFrame):
         raise NotImplementedError()
 
 
-# Define units and conversion for fluids
-amount_units = {'ml': 1}
-rate_units = {'mL/hour': 1, 'mL/min': 60}
-
-
 class FluidTimeStepsDf(TimeStepsDf):
     """
     Implements methods to chunk fluid input
     """
+    def load_df(self):
+        query = """
+            select
+                im.hadm_id,
+                im.starttime,
+                im.endtime,
+                im.itemid,
+                im.amount,
+                im.amountuom,
+                im.rate,
+                im.rateuom,
+                im.orderid,
+                im.linkorderid,
+                im.patientweight
+            from inputevents_mv im
+            inner join sepsis_admissions sa on
+                im.hadm_id = sa.hadm_id
+            inner join itemid_fluid_intake_mv ifim on 
+                im.itemid = ifim.itemid;
+        """
+        return pd.read_sql(query, connection)
+
+    def process(self):
+        self.remove_pre_admission_intake()
+        self.convert_rate_to_ml_hr()
+        self.convert_ml_kg_hr_to_ml_hr()
+        super(FluidTimeStepsDf, self).process()
+
+    def remove_pre_admission_intake(self):
+        drop_index = self.df.loc[self['amountuom'] == 'L'].index
+        self.df.drop(index=drop_index, inplace=True)
+
+    def convert_rate_to_ml_hr(self):
+        df_ml_min_idx = (self.df['rateuom'] == 'mL/min')
+        self.df.loc[df_ml_min_idx, 'rate'] = self.df.loc[df_ml_min_idx, 'rate'] * 60
+        self.df.loc[df_ml_min_idx, 'rateuom'] = 'mL/hour'
+
+    def convert_ml_kg_hr_to_ml_hr(self):
+        df_weight_rate_idx = (self.df['rateuom'] == 'mL/kg/hour')
+        self.df.loc[df_weight_rate_idx, 'rate'] = self.df.loc[df_weight_rate_idx, 'rate'] * self.df.loc[df_weight_rate_idx, 'patientweight']
+        self.df.loc[df_weight_rate_idx, 'rateuom'] = 'mL/hour'
 
     def chunkify(self, sepsis_admissions, period):
         time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
 
-        gr = self.groupby('hadm_id')
+        gr = self.df.groupby('hadm_id')
         fluids_chunked = apply_parallel(gr,
                                         self.chunk_group_worker,
                                         ref_df=time_chunks_ref,
@@ -137,7 +188,14 @@ class FluidTimeStepsDf(TimeStepsDf):
 
     @staticmethod
     def amount_if_end_in_chunk_but_not_start(current_chunk, df):
-        pass
+        end_in_idx = second_in(df, ['starttime', 'endtime'], current_chunk)
+        end_in_df = df.loc[end_in_idx, ['endtime', 'rate']]
+        end_in_df['timediff'] = end_in_df['endtime'] - current_chunk[0]
+
+        amount = 0
+        amount += sum(end_in_df.loc[end_in_df['rate'].isna(), 'amount'])
+        amount = sum(end_in_df['rate'] * end_in_df['timediff'] / 3600)
+        return amount
 
     @staticmethod
     def amount_if_start_in_chunk_but_not_end(current_chunk, df):
@@ -152,11 +210,19 @@ class VasopressinTimeStepsDf(TimeStepsDf):
     """
     Implements methods to chunk vasopressin data
     """
+    def load_df(self):
+        query = """
+            select * from
+                sepsis_inputevents_mv
+            where
+                itemid in (1136, 2445, 30051, 222315)
+        """
+        return pd.read_sql(query, connection)
 
     def chunkify(self, sepsis_admissions, period):
         time_chunks_ref = sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
 
-        gr = self.groupby('hadm_id')[['hadm_id', 'amount', 'rate', 'starttime', 'endtime']]
+        gr = self.df.groupby('hadm_id')[['hadm_id', 'amount', 'rate', 'starttime', 'endtime']]
         vasopressin_chunked = apply_parallel(gr,
                                              self.chunk_group_worker,
                                              ref_df=time_chunks_ref,
@@ -243,35 +309,3 @@ def load_admissions():
 
     return sepsis_admissions
 
-
-def load_sepsis_inputevents_mv():
-    sepsis_inputevents_mv = pd.read_sql("select * from sepsis_inputevents_mv", connection)
-    return sepsis_inputevents_mv
-
-
-def load_sepsis_fluid_events_mv():
-    query = """
-        select
-            im.hadm_id,
-            im.starttime,
-            im.endtime,
-            im.itemid,
-            im.amount,
-            im.amountuom,
-            im.rate,
-            im.rateuom,
-            im.orderid,
-            im.linkorderid
-        from inputevents_mv im
-        inner join sepsis_admissions sa on
-            im.hadm_id = sa.hadm_id
-        inner join itemid_fluid_intake_mv ifim on 
-            im.itemid = ifim.itemid;
-    """
-    sepsis_fluid_events = pd.read_sql(query, connection)
-
-    # This serves to remove pre-admission intake - only 4 events
-    drop_index = sepsis_fluid_events.loc[sepsis_fluid_events['amountuom'] == 'L'].index
-    sepsis_fluid_events.drop(index=drop_index, inplace=True)
-
-    return sepsis_fluid_events
