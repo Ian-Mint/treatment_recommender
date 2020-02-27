@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
+import time
 from multiprocessing import Pool, cpu_count
 from functools import partial
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from abc import abstractmethod
 
 from pre_processing.config import period_seconds
@@ -209,6 +210,7 @@ class VasopressinTimeSteps(TimeSteps):
     """
     Implements methods to chunk vasopressin data
     """
+
     def load_df(self):
         query = """
             select * from
@@ -217,6 +219,105 @@ class VasopressinTimeSteps(TimeSteps):
                 itemid in (1136, 2445, 30051, 222315)
         """
         return pd.read_sql(query, connection)
+
+
+class VitalsTimeSteps(TimeSteps):
+    """
+    Implements methods to chunk vital signs data
+    """
+
+    def load_df(self):
+        query = """
+            select 
+                hadm_id,
+                itemid,
+                charttime,
+                valuenum as value,
+                valueuom as unit
+            from
+                sepsis_vital_signs_filtered
+        """
+        return pd.read_sql(query, connection)
+
+    def process(self):
+        """
+        Performs data cleaning and processing steps
+        Needs to override the base because Vitals has charttime only, not start and end time
+        """
+        self.df.dropna(inplace=True)
+        self.farenheit_to_celcius('value')
+
+        gr = self.df.groupby('hadm_id')[['hadm_id', 'charttime']]
+        result = gr.apply(
+            self.time_norm,
+            groupby_header='hadm_id',
+            modifier_header='admittime',
+            operate_on_header=['charttime']
+        )
+        self.df['charttime'] = timestamp_to_int_seconds_series(result)
+
+    def farenheit_to_celcius(self, column):
+        f_filter = self.df['unit'] == '?F'
+
+        self.df.loc[f_filter, column] = (self.df.loc[f_filter, column] - 32) / 1.8
+        self.df.loc[f_filter, 'unit'] = '?C'
+
+    def chunkify(self, period):
+        time_chunks_ref = self.sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
+
+        gr = self.df[['hadm_id', 'itemid', 'value', 'charttime']].groupby('hadm_id')
+        df_chunked = apply_parallel(gr,
+                                    self.chunk_group_worker,
+                                    ref_df=time_chunks_ref,
+                                    period=period)
+        return df_chunked
+
+    @classmethod
+    def chunk_group_worker(cls,
+                           args,
+                           ref_df: pd.DataFrame,
+                           period: int, ) -> Tuple[int, dict]:
+        """
+        To be passed to a pool and operate on data grouped by `hadm_id`
+        :param args: [0] The group name, [1] the dataframe on which to operate
+        :param period: The chunk period in seconds
+        :param ref_df: a series containing the number of chunks for each hadm_id
+        """
+        t = time.time()
+
+        hadm_id = args[0]
+        assert isinstance(hadm_id, int)
+        df = args[1]
+        assert isinstance(df, pd.DataFrame)
+
+        num_chunks = ref_df.loc[hadm_id].item()
+
+        def chunk_items(items_df: pd.DataFrame) -> pd.Series:
+            assert isinstance(items_df, pd.DataFrame)
+            chunked_amount = []
+
+            for i in range(num_chunks):
+                current_chunk = [i * period, (i + 1) * period]
+
+                in_idx = in_chunk(items_df, 'charttime', current_chunk)
+                amount = items_df.loc[in_idx, 'value'].mean()
+
+                chunked_amount.append(amount)
+            return pd.Series(chunked_amount, name=items_df['itemid'].iloc[0])
+
+        gr = df[['itemid', 'charttime', 'value']].groupby('itemid').apply(chunk_items)
+        gr = dict(zip(gr.index, gr.values))
+
+        print(f"{hadm_id} | time: {time.time() - t:.2f} seconds")
+        return hadm_id, gr
+
+
+def in_chunk(df, column: str, comps: List[int]) -> pd.Series:
+    assert len(comps) == 2
+    assert isinstance(column, str)
+    before_chunk_end = df[column] < comps[1]
+    after_chunk_start = df[column] > comps[0]
+    return before_chunk_end & after_chunk_start
 
 
 def both_in(df, columns: List[str], comps: List[int]) -> pd.Series:
@@ -258,7 +359,7 @@ def apply_parallel(gr, func, **kwargs):
     return dict(ret_list)
 
 
-def debug_apply_parallel(gr, func, **kwargs):
+def _debug_apply_parallel(gr, func, **kwargs):
     """
     Not actually parallel, used so that breakpoints can be set in `func`
     """
