@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import time
 from multiprocessing import Pool, cpu_count
-from functools import partial
+from functools import partial, reduce
 from typing import List, Tuple, Dict
 from abc import abstractmethod
 
@@ -226,8 +226,31 @@ class VitalsTimeSteps(TimeSteps):
     Implements methods to chunk vital signs data
     """
 
+    @classmethod
+    def parse_blood_pressure(cls):
+        pass
+
+    @classmethod
+    def parse_temperature(cls):
+        pass
+
+    # These tuples define the order in which to pick certain duplicate measurements
+    bp_systolic_priority = (220050, 225309, 220179)
+    bp_diastolic_priority = (220051, 225310, 220180)
+    bp_mean_priority = (220052, 225312, 220181)
+    temperature_priority = (223762, 223761, 226329, 227632, 227634)
+    hr_priority = (220045, )
+    category_priorities = {
+        'bp_systolic': bp_systolic_priority,
+        'bp_diastolic': bp_diastolic_priority,
+        'bp_mean': bp_mean_priority,
+        'temperature': temperature_priority,
+        'hr': hr_priority,
+    }
+
     def load_df(self):
-        query = """
+        itemids = ', '.join((str(v) for v in reduce(tuple.__add__, self.category_priorities.values())))
+        query = f"""
             select 
                 hadm_id,
                 itemid,
@@ -236,6 +259,7 @@ class VitalsTimeSteps(TimeSteps):
                 valueuom as unit
             from
                 sepsis_vital_signs_filtered
+            where itemid in ({itemids}) 
         """
         return pd.read_sql(query, connection)
 
@@ -246,6 +270,7 @@ class VitalsTimeSteps(TimeSteps):
         """
         self.df.dropna(inplace=True)
         self.farenheit_to_celcius('value')
+        self.group_measurements()
 
         gr = self.df.groupby('hadm_id')[['hadm_id', 'charttime']]
         result = gr.apply(
@@ -256,6 +281,17 @@ class VitalsTimeSteps(TimeSteps):
         )
         self.df['charttime'] = timestamp_to_int_seconds_series(result)
 
+    def group_measurements(self):
+        """
+        Adds a 'group' column for measurements that are duplicated.
+        Later, pick the measurement of highest priority in each group for each chunk.
+        """
+        self.df['group'] = np.nan
+        for category_name, category_list in self.category_priorities.items():
+            self.df.loc[self.df['itemid'].isin(category_list), 'group'] = category_name
+
+        assert all(self.df['group'].notna())
+
     def farenheit_to_celcius(self, column):
         f_filter = self.df['unit'] == '?F'
 
@@ -265,7 +301,7 @@ class VitalsTimeSteps(TimeSteps):
     def chunkify(self, period):
         time_chunks_ref = self.sepsis_admissions[['hadm_id', 'time_chunks']].set_index('hadm_id')
 
-        gr = self.df[['hadm_id', 'itemid', 'value', 'charttime']].groupby('hadm_id')
+        gr = self.df[['hadm_id', 'itemid', 'value', 'charttime', 'group']].groupby('hadm_id')
         df_chunked = apply_parallel(gr,
                                     self.chunk_group_worker,
                                     ref_df=time_chunks_ref,
@@ -292,20 +328,27 @@ class VitalsTimeSteps(TimeSteps):
 
         num_chunks = ref_df.loc[hadm_id].item()
 
-        def chunk_items(items_df: pd.DataFrame) -> pd.Series:
-            assert isinstance(items_df, pd.DataFrame)
+        def chunk_items(groups_df: pd.DataFrame) -> pd.Series:
+            assert isinstance(groups_df, pd.DataFrame)
             chunked_amount = []
 
             for i in range(num_chunks):
                 current_chunk = [i * period, (i + 1) * period]
 
-                in_idx = in_chunk(items_df, 'charttime', current_chunk)
-                amount = items_df.loc[in_idx, 'value'].mean()
+                in_idx = in_chunk(groups_df, 'charttime', current_chunk)
+                amount = groups_df.loc[in_idx, 'value'].mean()
 
-                chunked_amount.append(amount)
-            return pd.Series(chunked_amount, name=items_df['itemid'].iloc[0])
+                # If amount is nan, replace with previous value, unless this is the first chunk
+                if np.isnan(amount):
+                    if chunked_amount:
+                        chunked_amount.append(chunked_amount[-1])
+                    else:
+                        chunked_amount.append(np.nan)
+                else:
+                    chunked_amount.append(amount)
+            return pd.Series(chunked_amount, name=groups_df['group'].iloc[0])
 
-        gr = df[['itemid', 'charttime', 'value']].groupby('itemid').apply(chunk_items)
+        gr = df[['group', 'itemid', 'charttime', 'value']].groupby('group').apply(chunk_items)
         gr = dict(zip(gr.index, gr.values))
 
         print(f"{hadm_id} | time: {time.time() - t:.2f} seconds")
