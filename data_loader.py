@@ -8,7 +8,10 @@ import config
 
 
 class Data:
-    def __init__(self):
+    def __init__(self, splits=(0.7, 0.1, 0.2)):
+        assert sum(splits) == 1
+        self.splits = splits
+
         # load static features
         self.demographics = load_demographics(config.demographics_path)
         self.elixhauser = load_pickle(config.elixhauser_path)
@@ -18,7 +21,7 @@ class Data:
         self.vasopressin = load_pickle(config.vasopressin_path)
         self.features = load_pickle(config.main_data_path)
 
-        self.hadm_ids = set(self.features.keys())
+        self.hadm_ids = list(self.features.keys())
         self.bad_hadm_ids = set()  # used during data validation
         self.maxlen = max((x.shape[0] for x in self.features.values()))
         self.process_time_series_data()
@@ -26,8 +29,19 @@ class Data:
         # Reduce elixhauser and demographics to include keys in time-series data
         self.demographics = {k: v for k, v in self.demographics.items() if k in self.fluids.keys()}
         self.elixhauser = {k: v for k, v in self.elixhauser.items() if k in self.fluids.keys()}
-        self.features = pad_sequences(self.features.values(), maxlen=self.maxlen, dtype='float', value=np.nan)
+        # TODO: sort everything the same, so we can forget about the admission ids
+        self.features = pad_sequences(sorted(self.features.values(), key=len, reverse=True)
+                                      , maxlen=self.maxlen, dtype='float', value=np.nan)
         # TODO: nan might need to be replaced -> self.time_series[self.time_series.isnan()] = -1
+
+    @property
+    def train_features(self):
+        # TODO: get splits
+        n_data = len(self.hadm_ids)
+        n_train = int(n_data * self.splits[0])
+        n_validate = int(n_data * self.splits[1])
+
+        train_ids = np.random.choice(self.hadm_ids, size=n_train)
 
     def process_time_series_data(self):
         """
@@ -93,7 +107,7 @@ class Data:
             self.fluids.pop(hadm_id)
             self.vasopressin.pop(hadm_id)
             self.features.pop(hadm_id)
-            self.hadm_ids.discard(hadm_id)
+            self.hadm_ids.remove(hadm_id)
 
 
 def drop_first_time_step(array):
@@ -123,4 +137,4 @@ def load_pickle(path: str) -> dict:
     with open(path, 'rb') as f:
         return pickle.load(f)
 
-Data()
+d=Data()
