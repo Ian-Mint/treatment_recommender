@@ -7,6 +7,9 @@ from keras.preprocessing.sequence import pad_sequences
 import config
 
 
+np.random.seed(0)
+
+
 class Data:
     def __init__(self, splits=(0.7, 0.1, 0.2)):
         assert sum(splits) == 1
@@ -23,25 +26,55 @@ class Data:
 
         self.hadm_ids = list(self.features.keys())
         self.bad_hadm_ids = set()  # used during data validation
+
         self.maxlen = max((x.shape[0] for x in self.features.values()))
         self.process_time_series_data()
+        self.split_hadm_ids()
 
         # Reduce elixhauser and demographics to include keys in time-series data
-        self.demographics = {k: v for k, v in self.demographics.items() if k in self.fluids.keys()}
-        self.elixhauser = {k: v for k, v in self.elixhauser.items() if k in self.fluids.keys()}
-        # TODO: sort everything the same, so we can forget about the admission ids
-        self.features = pad_sequences(sorted(self.features.values(), key=len, reverse=True)
-                                      , maxlen=self.maxlen, dtype='float', value=np.nan)
-        # TODO: nan might need to be replaced -> self.time_series[self.time_series.isnan()] = -1
+        self.demographics = {k: v for k, v in self.demographics.items() if k in self.hadm_ids}
+        self.elixhauser = {k: v for k, v in self.elixhauser.items() if k in self.hadm_ids}
 
-    @property
-    def train_features(self):
-        # TODO: get splits
-        n_data = len(self.hadm_ids)
-        n_train = int(n_data * self.splits[0])
-        n_validate = int(n_data * self.splits[1])
+        self.convert_dicts_to_lists()
+        self.pad_time_series()
+        # TODO: nan might need to be replaced -> self.features[self.features.isnan()] = -1
+        # TODO: May need to add processing to pick the first time step where there are no nans
 
-        train_ids = np.random.choice(self.hadm_ids, size=n_train)
+    def pad_time_series(self):
+        kwargs = {
+            'maxlen': self.maxlen,
+            'dtype': float,
+            'value': np.nan,
+            'padding': 'pre',
+        }
+        self.features = pad_sequences(self.features, **kwargs)
+        self.vasopressin = pad_sequences(self.vasopressin, **kwargs)
+        self.fluids = pad_sequences(self.fluids, **kwargs, )
+
+    def convert_dicts_to_lists(self):
+        """
+        Converts all of the dictionaries to lists in order of `hadm_id`
+        """
+        self.hadm_ids.sort(key=lambda k: len(self.features[k]), reverse=True)  # sort hadm_ids by longest feature vector
+        self.features = dict_to_list_by_key(self.features, self.hadm_ids)
+        self.vasopressin = dict_to_list_by_key(self.vasopressin, self.hadm_ids)
+        self.fluids = dict_to_list_by_key(self.fluids, self.hadm_ids)
+        self.demographics = dict_to_list_by_key(self.demographics, self.hadm_ids)
+        self.elixhauser = dict_to_list_by_key(self.elixhauser, self.hadm_ids)
+
+    def split_hadm_ids(self):
+        remaining_id_idx = set(range(len(self.hadm_ids)))
+        n_train = int(len(remaining_id_idx) * self.splits[0])
+        n_validate = int(len(remaining_id_idx) * self.splits[1])
+
+        self.train_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_train, replace=False))
+        remaining_id_idx = remaining_id_idx.difference(self.train_id_idx)
+
+        self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
+        remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
+
+        self.test_id_idx = remaining_id_idx
+
 
     def process_time_series_data(self):
         """
@@ -110,6 +143,10 @@ class Data:
             self.hadm_ids.remove(hadm_id)
 
 
+def dict_to_list_by_key(d: dict, keys) -> list:
+    return [d[k] for k in keys]
+
+
 def drop_first_time_step(array):
     if len(array.shape) == 1:
         return array[1:]
@@ -136,5 +173,3 @@ def load_demographics(path: str):
 def load_pickle(path: str) -> dict:
     with open(path, 'rb') as f:
         return pickle.load(f)
-
-d=Data()
