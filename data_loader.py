@@ -1,11 +1,10 @@
 import pickle
 import pandas as pd
 import numpy as np
-from typing import Union
+from typing import Union, List
 from keras.preprocessing.sequence import pad_sequences
 
 import config
-
 
 np.random.seed(0)
 
@@ -25,22 +24,28 @@ class Data:
         self.features = load_pickle(config.main_data_path)
 
         self.hadm_ids = list(self.features.keys())
-        self.bad_hadm_ids = set()  # used during data validation
+        self._bad_hadm_ids = set()  # used during data validation
 
         self.maxlen = max((x.shape[0] for x in self.features.values()))
-        self.process_time_series_data()
-        self.split_hadm_ids()
+        self._process_time_series_data()
+        self._split_hadm_ids()
 
         # Reduce elixhauser and demographics to include keys in time-series data
         self.demographics = {k: v for k, v in self.demographics.items() if k in self.hadm_ids}
         self.elixhauser = {k: v for k, v in self.elixhauser.items() if k in self.hadm_ids}
 
-        self.convert_dicts_to_lists()
-        self.pad_time_series()
+        self._convert_dicts_to_lists()
+        self._pad_time_series()
+        self.elixhauser = np.array(self.elixhauser)
+        self.demographics = np.array(self.demographics)
         # TODO: nan might need to be replaced -> self.features[self.features.isnan()] = -1
         # TODO: May need to add processing to pick the first time step where there are no nans
 
-    def pad_time_series(self):
+        self.train = Split(self, self.train_id_idx)
+        self.validate = Split(self, self.validation_id_idx)
+        self.test = Split(self, self.test_id_idx)
+
+    def _pad_time_series(self):
         kwargs = {
             'maxlen': self.maxlen,
             'dtype': float,
@@ -51,7 +56,8 @@ class Data:
         self.vasopressin = pad_sequences(self.vasopressin, **kwargs)
         self.fluids = pad_sequences(self.fluids, **kwargs, )
 
-    def convert_dicts_to_lists(self):
+    # noinspection PyTypeChecker
+    def _convert_dicts_to_lists(self):
         """
         Converts all of the dictionaries to lists in order of `hadm_id`
         """
@@ -62,21 +68,28 @@ class Data:
         self.demographics = dict_to_list_by_key(self.demographics, self.hadm_ids)
         self.elixhauser = dict_to_list_by_key(self.elixhauser, self.hadm_ids)
 
-    def split_hadm_ids(self):
+    def _split_hadm_ids(self):
+        """
+        Based on the number of admission ids, randomly selects a subset for training, testing and validation based on
+        `self.splits`, which should be fractional inputs adding to `1`. Outputs are `test_id_idx`, `validation_id_idx`
+        and `train_id_idx` where each of these is a numpy array sorted in ascending order.
+        """
         remaining_id_idx = set(range(len(self.hadm_ids)))
         n_train = int(len(remaining_id_idx) * self.splits[0])
         n_validate = int(len(remaining_id_idx) * self.splits[1])
 
         self.train_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_train, replace=False))
         remaining_id_idx = remaining_id_idx.difference(self.train_id_idx)
+        self.train_id_idx = np.array(sorted(list(self.train_id_idx)))
 
         self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
         remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
+        self.validation_id_idx = np.array(sorted(list(self.validation_id_idx)))
 
         self.test_id_idx = remaining_id_idx
+        self.test_id_idx = np.array(sorted(list(self.test_id_idx)))
 
-
-    def process_time_series_data(self):
+    def _process_time_series_data(self):
         """
         Concatenate the vasopressin and fluid labels onto the time_series data.
 
@@ -122,7 +135,7 @@ class Data:
         if time_chunks != labels.shape[0]:
             if abs(labels.shape[0] - time_chunks) > 1:
                 bad_id = True
-                self.bad_hadm_ids.add(hadm_id)
+                self._bad_hadm_ids.add(hadm_id)
             else:
                 labels = labels[:time_chunks]
         return bad_id, labels
@@ -134,13 +147,23 @@ class Data:
 
         :return:
         """
-        for hadm_id in self.bad_hadm_ids:
+        for hadm_id in self._bad_hadm_ids:
             self.demographics.pop(hadm_id)
             self.elixhauser.pop(hadm_id)
             self.fluids.pop(hadm_id)
             self.vasopressin.pop(hadm_id)
             self.features.pop(hadm_id)
             self.hadm_ids.remove(hadm_id)
+
+
+class Split:
+    def __init__(self, data: Data, sample_indexes: Union[List[int], np.ndarray]):
+        self.hadm_ids = np.array(data.hadm_ids)[sample_indexes]
+        self.features = np.array(data.features)[sample_indexes]
+        self.fluids = np.array(data.fluids)[sample_indexes]
+        self.vasopressin = np.array(data.vasopressin)[sample_indexes]
+        self.demographics = np.array(data.demographics)[sample_indexes]
+        self.elixhauser = np.array(data.elixhauser)[sample_indexes]
 
 
 def dict_to_list_by_key(d: dict, keys) -> list:
@@ -164,6 +187,7 @@ def drop_last_time_step(array):
     else:
         raise ValueError("array must be 1 or 2 dimensions")
 
+
 def load_demographics(path: str):
     data = pd.read_csv(path, names=['hadm_id', 'sex', 'age'])
     data = data.set_index(data['hadm_id']).drop('hadm_id', axis=1)
@@ -173,3 +197,6 @@ def load_demographics(path: str):
 def load_pickle(path: str) -> dict:
     with open(path, 'rb') as f:
         return pickle.load(f)
+
+
+d = Data()
