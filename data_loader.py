@@ -1,12 +1,15 @@
 import pickle
+import random
+from functools import reduce
+from typing import Union, List, Tuple
 import pandas as pd
 import numpy as np
-from typing import Union, List, Tuple
 from keras.preprocessing.sequence import pad_sequences
 
 import config
 
 np.random.seed(0)
+bp_mean_index = 60
 
 
 class Data:
@@ -38,18 +41,22 @@ class Data:
         self.demographics = {k: v for k, v in self.demographics.items() if k in self.hadm_ids}
         self.elixhauser = {k: v for k, v in self.elixhauser.items() if k in self.hadm_ids}
 
+        # convert to lists, then truncate all starting nans, then post-pad
         self._convert_dicts_to_lists()
-        self._pad_time_series()
+        self._truncate_to_first_valid_data()
+        self._pad_time_series(padding='post')
+
         self.elixhauser = np.array(self.elixhauser)
         self.demographics = np.array(self.demographics)
         # TODO: nan might need to be replaced -> self.features[self.features.isnan()] = -1
         # TODO: May need to add processing to pick the first time step where there are no nans
+        # TODO: consider scaling using sklearn.MinMaxScaler
 
         self.train = Split(self, self.train_id_idx)
         self.validate = Split(self, self.validation_id_idx)
         self.test = Split(self, self.test_id_idx)
 
-    def _pad_time_series(self):
+    def _pad_time_series(self, padding='post'):
         """
         Pads all of the timeseries data to the same length. Pad parameters can be set in `kwargs`
         """
@@ -57,19 +64,36 @@ class Data:
             'maxlen': self.maxlen,
             'dtype': float,
             'value': np.nan,
-            'padding': 'pre',
+            'padding': padding,  # post is required for CuDNN
         }
         self.features = pad_sequences(self.features, **kwargs)
         self.vasopressin = pad_sequences(self.vasopressin, **kwargs)
         self.fluids = pad_sequences(self.fluids, **kwargs, )
 
     # noinspection PyTypeChecker
+    def _truncate_to_first_valid_data(self):
+        """
+        Looks for the first not-nan value across all features and labels for each hadm-id. In practice, truncations
+        happen because there are missing values in `features`. The labels are 100% or nearly 100% complete.
+        """
+        first_idx_vasopressin = first_not_nan_idx(self.vasopressin)
+        first_idx_fluids = first_not_nan_idx(self.fluids)
+        first_idx_features = np.array([first_not_nan_idx(x).max() for x in self.features])
+        max_idx = reduce(np.maximum, [first_idx_vasopressin, first_idx_fluids, first_idx_features])
+
+        for i, start_idx in enumerate(max_idx):
+            self.vasopressin[i] = self.vasopressin[i][start_idx:]
+            self.fluids[i] = self.fluids[i][start_idx:]
+            self.features[i] = self.features[i][start_idx:]
+
+
+    # noinspection PyTypeChecker
     def _convert_dicts_to_lists(self):
         """
-        Converts all of the dictionaries to lists in order of `hadm_ids`. `hadm_ids` are sorted by the patient with the
-        longest stay.
+        Converts all of the dictionaries to lists in order of `hadm_ids`. `hadm_ids` are shuffled randomly.
         """
-        self.hadm_ids.sort(key=lambda k: len(self.features[k]), reverse=True)  # sort hadm_ids by longest feature vector
+        random.shuffle(self.hadm_ids)
+
         self.features = dict_to_list_by_key(self.features, self.hadm_ids)
         self.vasopressin = dict_to_list_by_key(self.vasopressin, self.hadm_ids)
         self.fluids = dict_to_list_by_key(self.fluids, self.hadm_ids)
@@ -172,6 +196,28 @@ class Split:
         self.elixhauser = np.array(data.elixhauser)[sample_indexes]
 
 
+def first_not_nan_idx(array: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
+    """
+    Returns the highest index among features and labels that is nan, plus 1. This is where the data will be sliced.
+
+    :param array: 2-d array
+    :return: an index
+    """
+    if isinstance(array, np.ndarray):
+        assert array.ndim == 2
+        array = array.astype(float).T
+        some_nan = np.isnan(array).any()
+    elif isinstance(array, list):
+        some_nan = any([np.isnan(x).any() for x in array])
+    else:
+        raise TypeError(f"{type(array)} not valid for Union[np.ndarray, List[np.ndarray]]")
+
+    dummy_min = 3e9
+    ret = np.array([np.min(np.where(np.logical_not(np.isnan(array[i]))), initial=dummy_min) for i in range(len(array))])
+    ret[ret == dummy_min] = 0
+    return ret
+
+
 def dict_to_list_by_key(d: dict, keys) -> list:
     return [d[k] for k in keys]
 
@@ -203,6 +249,3 @@ def load_demographics(path: str):
 def load_pickle(path: str) -> dict:
     with open(path, 'rb') as f:
         return pickle.load(f)
-
-
-d = Data()
