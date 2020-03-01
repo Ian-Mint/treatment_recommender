@@ -1,7 +1,7 @@
 import pickle
 import pandas as pd
 import numpy as np
-from typing import Union, List
+from typing import Union, List, Tuple
 from keras.preprocessing.sequence import pad_sequences
 
 import config
@@ -10,7 +10,11 @@ np.random.seed(0)
 
 
 class Data:
-    def __init__(self, splits=(0.7, 0.1, 0.2)):
+    def __init__(self, splits: Tuple[float] = (0.7, 0.1, 0.2)):
+        """
+        Loads, cleans, and splits the data for use in sequence training
+        :param splits: tuple(<train>, <validate>, <test>)
+        """
         assert sum(splits) == 1
         self.splits = splits
 
@@ -46,6 +50,9 @@ class Data:
         self.test = Split(self, self.test_id_idx)
 
     def _pad_time_series(self):
+        """
+        Pads all of the timeseries data to the same length. Pad parameters can be set in `kwargs`
+        """
         kwargs = {
             'maxlen': self.maxlen,
             'dtype': float,
@@ -59,7 +66,8 @@ class Data:
     # noinspection PyTypeChecker
     def _convert_dicts_to_lists(self):
         """
-        Converts all of the dictionaries to lists in order of `hadm_id`
+        Converts all of the dictionaries to lists in order of `hadm_ids`. `hadm_ids` are sorted by the patient with the
+        longest stay.
         """
         self.hadm_ids.sort(key=lambda k: len(self.features[k]), reverse=True)  # sort hadm_ids by longest feature vector
         self.features = dict_to_list_by_key(self.features, self.hadm_ids)
@@ -144,8 +152,6 @@ class Data:
         """
         There are two bad ids in the dataset
         TODO: figure out why!
-
-        :return:
         """
         for hadm_id in self._bad_hadm_ids:
             self.demographics.pop(hadm_id)
