@@ -1,8 +1,5 @@
 import keras
-import keras.backend as k
 from keras.layers import Input, LSTM, Dense, Masking, TimeDistributed
-import tensorflow.python as tf
-import numpy as np
 
 
 def build_model(batch_size, n_timesteps, n_features) -> keras.Model:
