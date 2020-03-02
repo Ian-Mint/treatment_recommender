@@ -63,7 +63,7 @@ class Data:
         kwargs = {
             'maxlen': self.maxlen,
             'dtype': float,
-            'value': np.nan,
+            'value': -1,  # nan does not work with keras Masking layers
             'padding': padding,  # post is required for CuDNN
         }
         self.features = pad_sequences(self.features, **kwargs)

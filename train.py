@@ -27,10 +27,14 @@ n_samples = data.features.shape[0]
 n_features = data.features.shape[2]
 model = build_model(batch_size, data.maxlen, n_features)
 
-# model.fit([data.features, data.demographics, data.elixhauser], [data.vasopressin, data.fluids],
-model.fit(x=data.features,
-          y=data.vasopressin.reshape(n_samples, data.maxlen, 1),
-          batch_size=1,
-          epochs=30,
-          validation_split=0.1,
-          callbacks=[tensorboard_callback])
+# TODO: figure out where these nans are coming from
+data.features[np.isnan(data.features)] = -1
+
+history = model.fit(x=data.features,
+                    y=data.vasopressin.reshape(n_samples, data.maxlen, 1),
+                    batch_size=11,
+                    epochs=30,
+                    validation_split=0.1,
+                    verbose=2,
+                    shuffle=False,
+                    callbacks=[tensorboard_callback])
