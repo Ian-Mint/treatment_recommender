@@ -18,8 +18,6 @@ def create_dataset(d: np.ndarray, look_back: int = 1):
     return np.array(x), np.array(y)
 
 
-tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_log_path, histogram_freq=1)
-
 data = Data()
 batch_size = 11  # other prime factors of len(data.hadm_id)==2068 are 4, 47
 
@@ -36,7 +34,6 @@ history = model.fit(x=data.features,
                     epochs=200,
                     validation_split=0.1,
                     verbose=2,
-                    shuffle=False,
-                    callbacks=[tensorboard_callback])
+                    shuffle=False,)
 
 model.save('model/batch11-epochs200-lstm16')
