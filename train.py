@@ -23,20 +23,25 @@ tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_lo
 data = Data()
 batch_size = 11  # other prime factors of len(data.hadm_id)==2068 are 4, 47
 
-n_samples = data.features.shape[0]
-n_features = data.features.shape[2]
+n_samples = data.train.features.shape[0]
+n_features = data.train.features.shape[2]
 model = build_model(batch_size, data.maxlen, n_features)
 
 # TODO: figure out where these nans are coming from
-data.features[np.isnan(data.features)] = -1
+data.train.features[np.isnan(data.train.features)] = -1
+data.test.features[np.isnan(data.test.features)] = -1
 
-history = model.fit(x=data.features,
-                    y=data.vasopressin.reshape(n_samples, data.maxlen, 1),
+checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='val_loss', verbose=0,
+                                                       save_best_only=False, save_weights_only=False, mode='auto',
+                                                       period=5)
+history = model.fit(x=data.train.features,
+                    y=data.train.vasopressin.reshape(n_samples, data.maxlen, 1),
                     batch_size=11,
                     epochs=200,
                     validation_split=0.1,
                     verbose=2,
                     shuffle=False,
-                    callbacks=[tensorboard_callback])
+                    callbacks=[tensorboard_callback,
+                               checkpoint])
 
-model.save('model/batch11-epochs200-lstm16')
+model.save('models/batch11-epochs200-lstm16')
