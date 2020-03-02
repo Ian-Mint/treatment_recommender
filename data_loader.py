@@ -13,7 +13,7 @@ bp_mean_index = 60
 
 
 class Data:
-    def __init__(self, splits: Tuple[float] = (0.7, 0.1, 0.2)):
+    def __init__(self, splits: Tuple[float] = (0.8, 0.2)):
         """
         Loads, cleans, and splits the data for use in sequence training
         :param splits: tuple(<train>, <validate>, <test>)
@@ -53,7 +53,7 @@ class Data:
         # TODO: consider scaling using sklearn.MinMaxScaler
 
         self.train = Split(self, self.train_id_idx)
-        self.validate = Split(self, self.validation_id_idx)
+        # self.validate = Split(self, self.validation_id_idx)
         self.test = Split(self, self.test_id_idx)
 
     def _pad_time_series(self, padding='post'):
@@ -108,15 +108,15 @@ class Data:
         """
         remaining_id_idx = set(range(len(self.hadm_ids)))
         n_train = int(len(remaining_id_idx) * self.splits[0])
-        n_validate = int(len(remaining_id_idx) * self.splits[1])
+        # n_validate = int(len(remaining_id_idx) * self.splits[1])
 
         self.train_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_train, replace=False))
         remaining_id_idx = remaining_id_idx.difference(self.train_id_idx)
         self.train_id_idx = np.array(sorted(list(self.train_id_idx)))
 
-        self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
-        remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
-        self.validation_id_idx = np.array(sorted(list(self.validation_id_idx)))
+        # self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
+        # remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
+        # self.validation_id_idx = np.array(sorted(list(self.validation_id_idx)))
 
         self.test_id_idx = remaining_id_idx
         self.test_id_idx = np.array(sorted(list(self.test_id_idx)))

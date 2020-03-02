@@ -33,7 +33,7 @@ data.features[np.isnan(data.features)] = -1
 history = model.fit(x=data.features,
                     y=data.vasopressin.reshape(n_samples, data.maxlen, 1),
                     batch_size=11,
-                    epochs=30,
+                    epochs=200,
                     validation_split=0.1,
                     verbose=2,
                     shuffle=False,
