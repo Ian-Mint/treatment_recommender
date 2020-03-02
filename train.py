@@ -38,3 +38,5 @@ history = model.fit(x=data.features,
                     verbose=2,
                     shuffle=False,
                     callbacks=[tensorboard_callback])
+
+model.save('model/batch11-epochs200-lstm16')
