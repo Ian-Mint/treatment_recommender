@@ -1,9 +1,13 @@
 import numpy as np
 import keras
+import pickle
 
 from data_loader import Data
 from model import build_model
 import config
+
+
+run_name = 'batch100-epochs100-lstm64'
 
 
 def create_dataset(d: np.ndarray, look_back: int = 1):
@@ -34,11 +38,13 @@ checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='
                                                        period=5)
 history = model.fit(x=data.train.features,
                     y=data.train.vasopressin.reshape(n_samples, data.maxlen, 1),
-                    batch_size=30,
-                    epochs=200,
+                    batch_size=100,
+                    epochs=100,
                     validation_split=0.1,
                     verbose=2,
                     shuffle=False,
                     callbacks=[checkpoint])
 
-model.save('models/batch30-epochs200-lstm32')
+model.save(f'models/{run_name}')
+with open(f'logs/{run_name}.history') as f:
+    pickle.dump(history, f)
