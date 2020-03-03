@@ -34,11 +34,11 @@ checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='
                                                        period=5)
 history = model.fit(x=data.train.features,
                     y=data.train.vasopressin.reshape(n_samples, data.maxlen, 1),
-                    batch_size=11,
+                    batch_size=30,
                     epochs=200,
                     validation_split=0.1,
                     verbose=2,
                     shuffle=False,
                     callbacks=[checkpoint])
 
-model.save('models/batch11-epochs200-lstm16')
+model.save('models/batch30-epochs200-lstm32')
