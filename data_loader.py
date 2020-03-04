@@ -8,6 +8,7 @@ from keras.preprocessing.sequence import pad_sequences
 
 import config
 
+random.seed(0)
 np.random.seed(0)
 bp_mean_index = 60
 
@@ -35,7 +36,6 @@ class Data:
 
         self.maxlen = max((x.shape[0] for x in self.features.values()))
         self._process_time_series_data()
-        self._split_hadm_ids()
 
         # Reduce elixhauser and demographics to include keys in time-series data
         self.demographics = {k: v for k, v in self.demographics.items() if k in self.hadm_ids}
@@ -48,17 +48,15 @@ class Data:
 
         self.elixhauser = np.array(self.elixhauser)
         self.demographics = np.array(self.demographics)
-        # TODO: nan might need to be replaced -> self.features[self.features.isnan()] = -1
-        # TODO: May need to add processing to pick the first time step where there are no nans
         # TODO: consider scaling using sklearn.MinMaxScaler
 
+        self._split_hadm_ids()
         self.train = Split(self, self.train_id_idx)
-        # self.validate = Split(self, self.validation_id_idx)
         self.test = Split(self, self.test_id_idx)
 
     def _pad_time_series(self, padding='post'):
         """
-        Pads all of the timeseries data to the same length. Pad parameters can be set in `kwargs`
+        Pads all of the time series data to the same length. Pad parameters can be set in `kwargs`
         """
         kwargs = {
             'maxlen': self.maxlen,
@@ -81,11 +79,30 @@ class Data:
         first_idx_features = np.array([first_not_nan_idx(x).max() for x in self.features])
         max_idx = reduce(np.maximum, [first_idx_vasopressin, first_idx_fluids, first_idx_features])
 
+        index_to_drop = []
         for i, start_idx in enumerate(max_idx):
             self.vasopressin[i] = self.vasopressin[i][start_idx:]
             self.fluids[i] = self.fluids[i][start_idx:]
             self.features[i] = self.features[i][start_idx:]
 
+            # Drop hadm_ids with at least one feature completely missing
+            if np.isnan(self.features[i].astype(float)).any():
+                index_to_drop.append(i)
+
+        self._drop_hadm_id(index_to_drop)
+
+    def _any_series_less_than_2_steps(self, idx):
+        ret = True
+        ret |= len(self.vasopressin[idx]) < 2
+        ret |= len(self.fluids[idx]) < 2
+        ret |= len(self.features[idx]) < 2
+
+    def _drop_hadm_id(self, idx: List[int]):
+        for i in idx:
+            self.features.pop(i)
+            self.hadm_ids.pop(i)
+            self.fluids.pop(i)
+            self.vasopressin.pop(i)
 
     # noinspection PyTypeChecker
     def _convert_dicts_to_lists(self):
@@ -108,15 +125,10 @@ class Data:
         """
         remaining_id_idx = set(range(len(self.hadm_ids)))
         n_train = int(len(remaining_id_idx) * self.splits[0])
-        # n_validate = int(len(remaining_id_idx) * self.splits[1])
 
         self.train_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_train, replace=False))
         remaining_id_idx = remaining_id_idx.difference(self.train_id_idx)
         self.train_id_idx = np.array(sorted(list(self.train_id_idx)))
-
-        # self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
-        # remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
-        # self.validation_id_idx = np.array(sorted(list(self.validation_id_idx)))
 
         self.test_id_idx = remaining_id_idx
         self.test_id_idx = np.array(sorted(list(self.test_id_idx)))

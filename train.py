@@ -7,7 +7,7 @@ from model import build_model
 import config
 
 
-run_name = 'batch100-epochs100-lstm64'
+run_name = 'batch50-epochs100-lstm64.clean'
 
 
 def create_dataset(d: np.ndarray, look_back: int = 1):
@@ -29,21 +29,20 @@ n_samples = data.train.features.shape[0]
 n_features = data.train.features.shape[2]
 model = build_model(batch_size, data.maxlen, n_features)
 
-# TODO: figure out where these nans are coming from
-data.train.features[np.isnan(data.train.features)] = -1
-data.test.features[np.isnan(data.test.features)] = -1
+assert np.isnan(data.features).any()
 
+# tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_log_path, histogram_freq=1)
 checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='val_loss', verbose=0,
                                                        save_best_only=False, save_weights_only=False, mode='auto',
                                                        period=5)
 history = model.fit(x=data.train.features,
                     y=data.train.vasopressin.reshape(n_samples, data.maxlen, 1),
-                    batch_size=100,
+                    batch_size=30,
                     epochs=100,
                     validation_split=0.1,
                     verbose=2,
                     shuffle=False,
-                    callbacks=[checkpoint])
+                    callbacks=[checkpoint,])
 
 model.save(f'models/{run_name}')
 with open(f'logs/{run_name}.history') as f:
