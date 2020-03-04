@@ -44,6 +44,7 @@ class Data:
         # convert to lists, then truncate all starting nans, then post-pad
         self._convert_dicts_to_lists()
         self._truncate_to_first_valid_data()
+        self._drop_hadm_id_with_nan_feature()
         self._pad_time_series(padding='post')
 
         self.elixhauser = np.array(self.elixhauser)
@@ -85,20 +86,10 @@ class Data:
             self.fluids[i] = self.fluids[i][start_idx:]
             self.features[i] = self.features[i][start_idx:]
 
-            # Drop hadm_ids with at least one feature completely missing
-            if np.isnan(self.features[i].astype(float)).any():
-                index_to_drop.append(i)
+    def _drop_hadm_id_with_nan_feature(self):
+        idx, = np.array([np.isnan(x.astype(float)).any() for x in self.features]).nonzero()
 
-        self._drop_hadm_id(index_to_drop)
-
-    def _any_series_less_than_2_steps(self, idx):
-        ret = True
-        ret |= len(self.vasopressin[idx]) < 2
-        ret |= len(self.fluids[idx]) < 2
-        ret |= len(self.features[idx]) < 2
-
-    def _drop_hadm_id(self, idx: List[int]):
-        for i in idx:
+        for i in np.flip(idx):
             self.features.pop(i)
             self.hadm_ids.pop(i)
             self.fluids.pop(i)

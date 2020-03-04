@@ -23,13 +23,12 @@ def create_dataset(d: np.ndarray, look_back: int = 1):
 
 
 data = Data()
+assert not np.isnan(data.features).any()
 batch_size = 11  # other prime factors of len(data.hadm_id)==2068 are 4, 47
 
 n_samples = data.train.features.shape[0]
 n_features = data.train.features.shape[2]
 model = build_model(batch_size, data.maxlen, n_features)
-
-assert np.isnan(data.features).any()
 
 # tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_log_path, histogram_freq=1)
 checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='val_loss', verbose=0,
