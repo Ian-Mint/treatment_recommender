@@ -7,7 +7,7 @@ from model import build_model
 import config
 
 
-run_name = 'batch50-epochs100-lstm64.clean'
+run_name = 'batch50-epochs100-lstm16.clean'
 
 
 def create_dataset(d: np.ndarray, look_back: int = 1):
