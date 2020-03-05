@@ -55,6 +55,15 @@ class Data:
         self.train = Split(self, self.train_id_idx)
         self.test = Split(self, self.test_id_idx)
 
+    def convert_to_sequence(self, look_back: int):
+        d = self.features.reshape(self.shape[0] * self.shape[1])
+        x, y = [], []
+        for i in range(len(d) - look_back - 1):
+            a = d[i:(i + look_back), 0]
+            x.append(a)
+            y.append(d[i + look_back, 0])
+        return np.array(x), np.array(y)
+
     def _pad_time_series(self, padding='post'):
         """
         Pads all of the time series data to the same length. Pad parameters can be set in `kwargs`
