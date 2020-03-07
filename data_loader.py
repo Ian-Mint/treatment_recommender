@@ -10,7 +10,6 @@ import config
 
 random.seed(0)
 np.random.seed(0)
-bp_mean_index = 60
 
 
 class Data:
@@ -53,6 +52,7 @@ class Data:
 
         self._split_hadm_ids()
         self.train = Split(self, self.train_id_idx)
+        self.validate = Split(self, self.validation_id_idx)
         self.test = Split(self, self.test_id_idx)
 
     def convert_to_sequence(self, look_back: int):
@@ -125,10 +125,15 @@ class Data:
         """
         remaining_id_idx = set(range(len(self.hadm_ids)))
         n_train = int(len(remaining_id_idx) * self.splits[0])
+        n_validate = int(len(remaining_id_idx) * self.splits[1])
 
         self.train_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_train, replace=False))
         remaining_id_idx = remaining_id_idx.difference(self.train_id_idx)
         self.train_id_idx = np.array(sorted(list(self.train_id_idx)))
+
+        self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
+        remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
+        self.validation_id_idx = np.array(sorted(list(self.validation_id_idx)))
 
         self.test_id_idx = remaining_id_idx
         self.test_id_idx = np.array(sorted(list(self.test_id_idx)))

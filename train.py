@@ -26,11 +26,11 @@ history = model.fit(x=data.train.features,
                     y=data.train.vasopressin.reshape(n_samples, data.maxlen, 1),
                     batch_size=30,
                     epochs=100,
-                    validation_split=0.1,
+                    validation_data=(data.validate.features, data.validate.vasopressin.reshape(-1, data.maxlen, 1)),
                     verbose=2,
                     shuffle=False,
                     callbacks=[checkpoint,])
 
 model.save(f'models/{run_name}')
-with open(f'logs/{run_name}.history') as f:
+with open(f'logs/{run_name}.history', 'wb') as f:
     pickle.dump(history, f)
