@@ -4,6 +4,7 @@ from functools import reduce
 from typing import Union, List, Tuple
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 from keras.preprocessing.sequence import pad_sequences
 
 import config
@@ -12,6 +13,7 @@ random.seed(0)
 np.random.seed(0)
 
 
+# noinspection PyTypeChecker
 class Data:
     def __init__(self, splits: Tuple[float] = (0.8, 0.2)):
         """
@@ -46,14 +48,30 @@ class Data:
         self._drop_hadm_id_with_nan_feature()
         self._pad_time_series(padding='post')
 
+        self._scale_data()
+        self._replace_nan_with_neg1()
+
         self.elixhauser = np.array(self.elixhauser)
         self.demographics = np.array(self.demographics)
-        # TODO: consider scaling using sklearn.MinMaxScaler
 
         self._split_hadm_ids()
         self.train = Split(self, self.train_id_idx)
         self.validate = Split(self, self.validation_id_idx)
         self.test = Split(self, self.test_id_idx)
+
+    def _scale_data(self):
+        self.vasopressin_scaler = MinMaxScaler()
+        self.fluids_scaler = MinMaxScaler()
+        self.features_scaler = MinMaxScaler()
+
+        self.vasopressin = scale_data(self.vasopressin_scaler, self.vasopressin, 1)
+        self.fluids = scale_data(self.fluids_scaler, self.fluids, 1)
+        self.features = scale_data(self.features_scaler, self.features, self.features.shape[2])
+
+    def _replace_nan_with_neg1(self):
+        self.vasopressin[np.isnan(self.vasopressin)] = -1
+        self.fluids[np.isnan(self.fluids)] = -1
+        self.features[np.isnan(self.features)] = -1
 
     def convert_to_sequence(self, look_back: int):
         d = self.features.reshape(self.shape[0] * self.shape[1])
@@ -71,7 +89,7 @@ class Data:
         kwargs = {
             'maxlen': self.maxlen,
             'dtype': float,
-            'value': -1,  # nan does not work with keras Masking layers
+            'value': np.nan,  # nan does not work with keras Masking layers, but nan is needed for scaling
             'padding': padding,  # post is required for CuDNN
         }
         self.features = pad_sequences(self.features, **kwargs)
@@ -211,6 +229,11 @@ class Split:
         self.vasopressin = np.array(data.vasopressin)[sample_indexes]
         self.demographics = np.array(data.demographics)[sample_indexes]
         self.elixhauser = np.array(data.elixhauser)[sample_indexes]
+
+
+def scale_data(scaler: MinMaxScaler, x: np.ndarray, n_features: int = 1) -> np.ndarray:
+    shape = x.shape
+    return scaler.fit_transform(x.reshape(-1, n_features)).reshape(*shape)
 
 
 def first_not_nan_idx(array: Union[np.ndarray, List[np.ndarray]]) -> np.ndarray:
