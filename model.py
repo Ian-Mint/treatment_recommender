@@ -3,11 +3,19 @@ from keras.layers import LSTM, Dense, Masking, TimeDistributed
 
 
 def build_model(batch_size, n_timesteps, n_features) -> keras.Model:
-    model = keras.Sequential()
+    model = keras.Sequential([
+        Masking(mask_value=-1, input_shape=(n_timesteps, n_features)),
+        LSTM(
+            8,
+            return_sequences=True,
+            input_shape=(n_timesteps, n_features),
+            dropout=0,
+            recurrent_dropout=0,
+            stateful=False,
+        ),
+        TimeDistributed(Dense(1)),
+    ])
 
-    model.add(Masking(mask_value=-1, input_shape=(n_timesteps, n_features)))
-    model.add(LSTM(8, return_sequences=True, input_shape=(n_timesteps, n_features)))
-    model.add(TimeDistributed(Dense(1)))
     model.compile(optimizer='rmsprop', loss='mse')
 
     print(model.summary())
