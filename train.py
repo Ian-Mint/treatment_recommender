@@ -37,6 +37,7 @@ def main(args):
                       shuffle=False,
                       callbacks=[checkpoint, ])
         )
+        print(f"Epoch {i}/{args.epochs}")
         model.reset_states()
 
     model.save(f'models/{run_name}')
