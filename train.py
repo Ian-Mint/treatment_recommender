@@ -6,30 +6,36 @@ from data_loader import Data
 from model import build_model
 import config
 
-
 run_name = 'batch50-epochs100-lstm16.clean'
+lookback = 4
+epochs = 20
+batch_size = 30
+width = 32  # LSTM width
 
-
-data = Data()
+data = Data(lookback=lookback, batch_size=batch_size)
 assert not np.isnan(data.features).any()
-batch_size = 11  # other prime factors of len(data.hadm_id)==2068 are 4, 47
 
 n_samples = data.train.features.shape[0]
 n_features = data.train.features.shape[2]
-model = build_model(batch_size, data.maxlen, n_features)
+model = build_model(width, batch_size, lookback, n_features)
 
 # tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_log_path, histogram_freq=1)
 checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='val_loss', verbose=0,
                                                        save_best_only=False, save_weights_only=False, mode='auto',
                                                        period=5)
-history = model.fit(x=data.train.features,
-                    y=data.train.vasopressin.reshape(n_samples, data.maxlen, 1),
-                    batch_size=30,
-                    epochs=100,
-                    validation_data=(data.validate.features, data.validate.vasopressin.reshape(-1, data.maxlen, 1)),
-                    verbose=2,
-                    shuffle=False,
-                    callbacks=[checkpoint,])
+history = []
+for i in range(epochs):
+    history.append(
+        model.fit(x=data.train.features,
+                  y=data.train.vasopressin,
+                  batch_size=batch_size,
+                  epochs=1,
+                  validation_data=(data.validate.features, data.validate.vasopressin),
+                  verbose=2,
+                  shuffle=False,
+                  callbacks=[checkpoint, ])
+    )
+    model.reset_states()
 
 model.save(f'models/{run_name}')
 with open(f'logs/{run_name}.history', 'wb') as f:
