@@ -1,8 +1,10 @@
 import tensorflow as tf
-import keras
-from keras.layers import LSTM, Dense, Masking, TimeDistributed, CuDNNLSTM
+from tensorflow import keras
+from tensorflow.keras.layers import LSTM, Dense, Masking, TimeDistributed
 
 use_gpu = tf.test.is_built_with_gpu_support() and tf.test.is_gpu_available(cuda_only=True)
+if use_gpu:
+    from tensorflow.keras.layers import CuDNNLSTM
 
 
 def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,

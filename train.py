@@ -1,11 +1,8 @@
 import numpy as np
-import keras
-import pickle
 import argparse
 
 from data_loader import Data
 from model import build_model
-
 
 layers = 2  # LSTM layers
 
@@ -20,11 +17,9 @@ def main(args):
     n_features = data.train.features.shape[2]
     model = build_model(args.width, args.batch_size, args.lookback, n_features, args.layers)
 
-    # TODO: figure out a way to use tensorboard
-    # tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_log_path, histogram_freq=1)
-    checkpoint = keras.callbacks.callbacks.ModelCheckpoint('models/model', monitor='val_loss', verbose=0,
-                                                           save_best_only=False, save_weights_only=False, mode='auto',
-                                                           period=5)
+    # checkpoint = keras.callbacks.ModelCheckpoint('models/model', monitor='val_loss', verbose=0,
+    #                                              save_best_only=True, save_weights_only=False, mode='auto',
+    #                                              save_freq='epoch')
     history = []
     for i in range(args.epochs):
         history.append(
@@ -35,14 +30,13 @@ def main(args):
                       validation_data=(data.validate.features, data.validate.vasopressin),
                       verbose=2,
                       shuffle=False,
-                      callbacks=[checkpoint, ])
+                      # callbacks=[checkpoint, ]
+                      )
         )
         print(f"Epoch {i}/{args.epochs}")
         model.reset_states()
 
     model.save(f'models/{run_name}')
-    with open(f'logs/{run_name}.history', 'wb') as f:
-        pickle.dump(history, f)
 
 
 if __name__ == '__main__':
