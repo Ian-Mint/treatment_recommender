@@ -133,6 +133,7 @@ dmypy.json
 
 # Data
 models/model
+models/model.tf
 
 # Secure information
 pre_processing/db_tools.py
