@@ -2,16 +2,26 @@ import keras
 from keras.layers import LSTM, Dense, Masking, TimeDistributed
 
 
-def build_model(batch_size, n_timesteps, n_features) -> keras.Model:
+def build_model(width, batch_size, n_timesteps, n_features,
+                dropout=0, recurrent_dropout=0) -> keras.Model:
+    """
+
+    :param width:
+    :param batch_size:
+    :param n_timesteps:
+    :param n_features:
+    :param dropout:
+    :param recurrent_dropout:
+    :return:
+    """
     model = keras.Sequential([
-        Masking(mask_value=-1, input_shape=(n_timesteps, n_features)),
+        Masking(mask_value=-1, batch_input_shape=[batch_size, n_timesteps, n_features]),
         LSTM(
-            8,
+            width,
             return_sequences=True,
-            input_shape=(n_timesteps, n_features),
-            dropout=0,
-            recurrent_dropout=0,
-            stateful=False,
+            dropout=dropout,
+            recurrent_dropout=recurrent_dropout,
+            stateful=True,
         ),
         TimeDistributed(Dense(1)),
     ])
