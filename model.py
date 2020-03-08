@@ -1,14 +1,15 @@
 import tensorflow as tf
 import keras
-from keras.layers import LSTM, Dense, Masking, TimeDistributed, CuDNNLSTM
+from keras.layers import LSTM, Dense, Masking, TimeDistributed, ThresholdedReLU, CuDNNLSTM
 
 use_gpu = tf.test.is_built_with_gpu_support() and tf.test.is_gpu_available(cuda_only=True)
 
 
 def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
-                dropout=0, recurrent_dropout=0, ) -> keras.Model:
+                dropout=0, recurrent_dropout=0, output_threshold=0) -> keras.Model:
     """
 
+    :param output_threshold: output values below this will be set to zero
     :param n_layers:
     :param width:
     :param batch_size:
@@ -37,6 +38,7 @@ def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
             lstm = LSTM(width, **lstm_kwargs)
         model.add(lstm)
     model.add(TimeDistributed(Dense(1)))
+    model.add(TimeDistributed(ThresholdedReLU(1)))
     model.compile(optimizer='rmsprop', loss='mse')
 
     print(model.summary())

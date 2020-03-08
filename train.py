@@ -7,7 +7,7 @@ from data_loader import Data
 from model import build_model
 
 
-layers = 2  # LSTM layers
+vasopressin_threshold = 0.02  # Values below this should be considered 0
 
 
 def main(args):
@@ -18,7 +18,8 @@ def main(args):
 
     n_samples = data.train.features.shape[0]
     n_features = data.train.features.shape[2]
-    model = build_model(args.width, args.batch_size, args.lookback, n_features, args.layers)
+    model = build_model(args.width, args.batch_size, args.lookback, n_features, args.layers,
+                        output_threshold=vasopressin_threshold)
 
     # TODO: figure out a way to use tensorboard
     # tensorboard_callback = keras.callbacks.TensorBoard(log_dir=config.tensorboard_log_path, histogram_freq=1)
