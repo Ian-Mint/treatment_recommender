@@ -34,5 +34,3 @@ def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
 
     print(model.summary())
     return model
-
-# TODO: make it stateful. Requires a loop with a call to model.reset_states after every iteration (epoch)
