@@ -132,6 +132,7 @@ dmypy.json
 .idea/
 
 # Data
+models/model
 
 # Secure information
 pre_processing/db_tools.py
