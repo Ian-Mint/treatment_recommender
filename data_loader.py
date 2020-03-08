@@ -15,13 +15,14 @@ np.random.seed(0)
 
 # noinspection PyTypeChecker
 class Data:
-    def __init__(self, splits: Tuple[float] = (0.8, 0.2), lookback: int = None, overlap: int = 0,
+    def __init__(self, splits: Tuple[float] = (0.7, 0.1, 0.2), lookback: int = None, overlap: int = 0,
                  batch_size: int = None):
         """
         Loads, cleans, and splits the data for use in sequence training
 
         :param splits: tuple(<train>, <validate>, <test>)
         """
+        assert len(splits) == 3
         assert sum(splits) == 1
         self.splits = splits
         self.lookback = lookback
