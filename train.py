@@ -31,7 +31,7 @@ def main(args):
             model.fit(x=data.train.features,
                       y=data.train.vasopressin,
                       batch_size=args.batch_size,
-                      epochs=args.epochs,
+                      epochs=1,
                       validation_data=(data.validate.features, data.validate.vasopressin),
                       verbose=2,
                       shuffle=False,
