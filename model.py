@@ -30,7 +30,6 @@ def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
         model.add(LSTM(width, **lstm_kwargs))
 
     model.add(TimeDistributed(Dense(1)))
-    model.add(TimeDistributed(ThresholdedReLU(output_threshold)))
     model.compile(optimizer='rmsprop', loss='mse')
 
     print(model.summary())
