@@ -30,6 +30,8 @@ def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
 
     for i in range(n_layers):
         if use_gpu:
+            lstm_kwargs.pop('dropout')
+            lstm_kwargs.pop('recurrent_dropout')
             lstm = CuDNNLSTM(width, **lstm_kwargs)
         else:
             lstm = LSTM(width, **lstm_kwargs)
