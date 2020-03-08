@@ -15,13 +15,17 @@ np.random.seed(0)
 
 # noinspection PyTypeChecker
 class Data:
-    def __init__(self, splits: Tuple[float] = (0.8, 0.2)):
+    def __init__(self, splits: Tuple[float] = (0.8, 0.2), lookback: int = None, overlap: int = 0,
+                 batch_size: int = None):
         """
         Loads, cleans, and splits the data for use in sequence training
+
         :param splits: tuple(<train>, <validate>, <test>)
         """
         assert sum(splits) == 1
         self.splits = splits
+        self.lookback = lookback
+        self.overlap = overlap
 
         # load static features
         self.demographics = load_demographics(config.demographics_path)
@@ -48,16 +52,26 @@ class Data:
         self._drop_hadm_id_with_nan_feature()
         self._pad_time_series(padding='post')
 
+        # Transform data
         self._scale_data()
+        if lookback:
+            self._window_data()
         self._replace_nan_with_neg1()
 
         self.elixhauser = np.array(self.elixhauser)
         self.demographics = np.array(self.demographics)
 
+        # TODO: check splits still work after windowing
         self._split_hadm_ids()
-        self.train = Split(self, self.train_id_idx)
-        self.validate = Split(self, self.validation_id_idx)
-        self.test = Split(self, self.test_id_idx)
+        self.train = Split(self, self.train_idx, batch_size)
+        self.validate = Split(self, self.validation_idx, batch_size)
+        self.test = Split(self, self.test_idx, batch_size)
+
+    def _window_data(self):
+        self.vasopressin = window_data(self.vasopressin, window_size=self.lookback)
+        self.fluids = window_data(self.fluids, window_size=self.lookback)
+        self.features = window_data(self.features, window_size=self.lookback)
+
 
     def _scale_data(self):
         self.vasopressin_scaler = MinMaxScaler()
@@ -141,20 +155,25 @@ class Data:
         `self.splits`, which should be fractional inputs adding to `1`. Outputs are `test_id_idx`, `validation_id_idx`
         and `train_id_idx` where each of these is a numpy array sorted in ascending order.
         """
-        remaining_id_idx = set(range(len(self.hadm_ids)))
-        n_train = int(len(remaining_id_idx) * self.splits[0])
-        n_validate = int(len(remaining_id_idx) * self.splits[1])
+        if self.lookback:
+            n_windows = self.maxlen // self.lookback
+        else:
+            n_windows = 1
 
-        self.train_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_train, replace=False))
-        remaining_id_idx = remaining_id_idx.difference(self.train_id_idx)
-        self.train_id_idx = np.array(sorted(list(self.train_id_idx)))
+        remaining_idx = set(range(len(self.hadm_ids) * n_windows))
+        n_train = int(len(remaining_idx) * self.splits[0])
+        n_validate = int(len(remaining_idx) * self.splits[1])
 
-        self.validation_id_idx = set(np.random.choice(list(remaining_id_idx), size=n_validate, replace=False))
-        remaining_id_idx = remaining_id_idx.difference(self.validation_id_idx)
-        self.validation_id_idx = np.array(sorted(list(self.validation_id_idx)))
+        self.train_idx = set(np.random.choice(list(remaining_idx), size=n_train, replace=False))
+        remaining_idx = remaining_idx.difference(self.train_idx)
+        self.train_idx = np.array(sorted(list(self.train_idx)))
 
-        self.test_id_idx = remaining_id_idx
-        self.test_id_idx = np.array(sorted(list(self.test_id_idx)))
+        self.validation_idx = set(np.random.choice(list(remaining_idx), size=n_validate, replace=False))
+        remaining_idx = remaining_idx.difference(self.validation_idx)
+        self.validation_idx = np.array(sorted(list(self.validation_idx)))
+
+        self.test_idx = remaining_idx
+        self.test_idx = np.array(sorted(list(self.test_idx)))
 
     def _process_time_series_data(self):
         """
@@ -222,13 +241,53 @@ class Data:
 
 
 class Split:
-    def __init__(self, data: Data, sample_indexes: Union[List[int], np.ndarray]):
-        self.hadm_ids = np.array(data.hadm_ids)[sample_indexes]
+    def __init__(self, data: Data, sample_indexes: Union[List[int], np.ndarray], batch_size: int = None):
+        self._batch_size = batch_size
+
+        # TODO: split hadm_ids, demographics and elixhauser the same as the series data
+        # self.hadm_ids = np.array(data.hadm_ids)[sample_indexes]
         self.features = np.array(data.features)[sample_indexes]
         self.fluids = np.array(data.fluids)[sample_indexes]
         self.vasopressin = np.array(data.vasopressin)[sample_indexes]
-        self.demographics = np.array(data.demographics)[sample_indexes]
-        self.elixhauser = np.array(data.elixhauser)[sample_indexes]
+        # self.demographics = np.array(data.demographics)[sample_indexes]
+        # self.elixhauser = np.array(data.elixhauser)[sample_indexes]
+        if batch_size:
+            self._truncate_to_batch_size()
+
+    def _truncate_to_batch_size(self):
+        remainder = len(self.features) % self._batch_size
+        if remainder:
+            self.features = self.features[: -remainder]
+            self.vasopressin = self.vasopressin[: -remainder]
+            self.fluids = self.fluids[: -remainder]
+
+
+def window_data(x: np.ndarray, window_size: int = 1, overlap: int = 0):
+    """
+    Creates windowed data by reshaping x. The final shape will be:
+        `((x.shape[1] / window_size) * x.shape[0], window_size, x.shape[2])`
+        if x is only 2-D, this returns a 3-D array with the last dim of size 1
+
+    Any last, partial sequence is dropped in case `x.shape[1]` is not divisible by `window_size`. This should have
+    almost no impact, because the sequences are end-padded.
+
+    :param x:
+    :param window_size:
+    :param overlap: not yet implemented
+    """
+    if overlap:
+        raise NotImplementedError("overlap is not implemented yet. Set it to 0")
+
+    if x.ndim == 2:
+        x = x.reshape(*x.shape, 1)
+    samples, sequence_length, n_features = x.shape
+
+    n_windows = sequence_length // window_size
+    ret = np.zeros([n_windows * samples, window_size, n_features])
+    for i in range(0, n_windows):
+        ret[range(i * samples, (i + 1) * samples)] = x[:, range(i * window_size, (i + 1) * window_size)]
+
+    return ret
 
 
 def scale_data(scaler: MinMaxScaler, x: np.ndarray, n_features: int = 1) -> np.ndarray:
