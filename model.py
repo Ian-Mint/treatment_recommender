@@ -1,12 +1,12 @@
-import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import LSTM, Dense, Masking, TimeDistributed
+from tensorflow.keras.layers import LSTM, Dense, Masking, TimeDistributed, ThresholdedReLU
 
 
 def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
-                dropout=0, recurrent_dropout=0, ) -> keras.Model:
+                dropout=0, recurrent_dropout=0, output_threshold=0) -> keras.Model:
     """
 
+    :param output_threshold: output values below this will be set to zero
     :param n_layers:
     :param width:
     :param batch_size:
@@ -30,6 +30,7 @@ def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
         model.add(LSTM(width, **lstm_kwargs))
 
     model.add(TimeDistributed(Dense(1)))
+    model.add(TimeDistributed(ThresholdedReLU(1)))
     model.compile(optimizer='rmsprop', loss='mse')
 
     print(model.summary())
