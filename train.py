@@ -14,10 +14,13 @@ def main(args):
     data = Data(lookback=args.lookback, batch_size=args.batch_size)
     assert not np.isnan(data.features).any()
 
-    n_samples = data.train.features.shape[0]
     n_features = data.train.features.shape[2]
-    model = build_model(args.width, args.batch_size, args.lookback, n_features, args.layers,
-                        output_threshold=vasopressin_threshold)
+
+    if args.load_model:
+        model = keras.models.load_model(args.model_path)
+    else:
+        model = build_model(args.width, args.batch_size, args.lookback, n_features, args.layers,
+                            output_threshold=vasopressin_threshold)
 
     checkpoint = keras.callbacks.ModelCheckpoint('models/model.tf', monitor='val_loss', verbose=0,
                                                  save_best_only=True, save_weights_only=False, mode='auto',
@@ -55,6 +58,10 @@ if __name__ == '__main__':
     parser.add_argument('--lookback', type=int, default=4, help='number of time steps to look back')
     parser.add_argument('--width', type=int, default=16, help='width of the LSTM layers')
     parser.add_argument('--layers', type=int, default=2, help='number of LSTM layers')
+
+    # Load Model
+    parser.add_argument('--load_model', type=bool, default=False, help='If true, load model from model_path')
+    parser.add_argument('--model_path', type=str, default='models/model.tf', help='Load if load_model set to true')
 
     args = parser.parse_args()
     main(args)
