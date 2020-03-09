@@ -1,5 +1,5 @@
-from tensorflow import keras
-from tensorflow.keras.layers import LSTM, Dense, Masking, TimeDistributed, ThresholdedReLU
+import keras
+from keras.layers import LSTM, Dense, Masking, TimeDistributed, ThresholdedReLU
 
 
 def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
