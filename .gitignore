@@ -135,6 +135,9 @@ dmypy.json
 models/model
 models/model.tf
 
+# Emacs backup
+*~
+
 # Secure information
 pre_processing/db_tools.py
 play.py
