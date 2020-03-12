@@ -1,6 +1,6 @@
 import numpy as np
 import argparse
-from tensorflow import keras
+import keras
 
 from data_loader import Data
 from model import build_model
@@ -22,9 +22,8 @@ def main(args):
         model = build_model(args.width, args.batch_size, args.lookback, n_features, args.layers,
                             output_threshold=vasopressin_threshold)
 
-    checkpoint = keras.callbacks.ModelCheckpoint('models/model.tf', monitor='val_loss', verbose=0,
-                                                 save_best_only=True, save_weights_only=False, mode='auto',
-                                                 save_freq='epoch')
+    checkpoint = keras.callbacks.ModelCheckpoint('models/model.hdf5', monitor='val_loss', verbose=0,
+                                                 save_best_only=True, save_weights_only=False, mode='auto')
     history = []
     for i in range(args.epochs):
         history.append(
@@ -41,7 +40,7 @@ def main(args):
         print(f"Epoch {i}/{args.epochs}")
         model.reset_states()
 
-    model.save(f'models/{run_name}.tf')
+    model.save(f'models/{run_name}.hdf5')
 
 
 if __name__ == '__main__':

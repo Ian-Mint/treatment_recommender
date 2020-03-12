@@ -138,3 +138,4 @@ models/model.tf
 # Secure information
 pre_processing/db_tools.py
 play.py
+figures/
