@@ -1,8 +1,11 @@
 #!/bin/bash
 
-for i in 2 4 8
+for j in 4 8 32
 do
-    python train.py --epochs 200 --batch 50 --layers $i --lookback 8 --width 4
+    for i in 4 8 16
+    do
+	python train.py --epochs 100 --batch_size 50 --layers 2 --lookback $i --width $j
+    done
 done
 
 paplay /usr/share/sounds/gnome/default/alerts/glass.ogg 
