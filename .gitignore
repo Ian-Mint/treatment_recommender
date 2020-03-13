@@ -132,8 +132,12 @@ dmypy.json
 .idea/
 
 # Data
-models/model
 models/model.tf
+data/sepsis_admissions_admit_time.csv
+data/sepsis_lab_events.csv
+data/training_lab_data.pkl
+data/lab_event_training_set.pkl
+data/lab_event_training_set_interpolated.pkl
 
 # Emacs backup
 *~
