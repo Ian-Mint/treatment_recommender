@@ -216,7 +216,7 @@ class VasopressinTimeSteps(TimeSteps):
             select * from
                 sepsis_inputevents_mv
             where
-                itemid in (1136, 2445, 30051, 222315)
+                itemid in (1136, 2445, 30051, 222315, 30044, 221289, 221906)
         """
         return pd.read_sql(query, connection)
 
