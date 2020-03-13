@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # Files
-    parser.add_argument('--name', type=str, default='model', help='name to append to saved model')
+    parser.add_argument('--name', type=str, default='new-v', help='name to append to saved model')
 
     # Training
     parser.add_argument('--batch_size', type=int, default=30, help='batch size')

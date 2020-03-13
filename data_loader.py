@@ -195,13 +195,14 @@ class Data:
                 continue
 
             # append labels
-            new_series = np.append(self.features[k], self.vasopressin[k].reshape(time_chunks, 1), axis=1)
+            # new_series = np.append(self.features[k], self.vasopressin[k].reshape(time_chunks, 1), axis=1)
+            new_series = self.features[k]
             new_series = np.append(new_series, self.fluids[k].reshape(time_chunks, 1), axis=1)
 
             # shift data
             self.features[k] = drop_last_time_step(new_series)
-            self.vasopressin[k] = drop_first_time_step(self.vasopressin[k])
             self.fluids[k] = drop_last_time_step(self.fluids[k])
+            self.vasopressin[k] = drop_first_time_step(self.vasopressin[k])
 
         self.drop_bad_hadm_ids()
 

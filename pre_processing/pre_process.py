@@ -235,10 +235,10 @@ class VitalsTimeSteps(TimeSteps):
         pass
 
     # These tuples define the order in which to pick certain duplicate measurements
-    bp_systolic_priority = (220050, 225309, 220179)
-    bp_diastolic_priority = (220051, 225310, 220180)
-    bp_mean_priority = (220052, 225312, 220181)
-    temperature_priority = (223762, 223761, 226329, 227632, 227634)
+    bp_systolic_priority = (220050, )
+    bp_diastolic_priority = (220051, )
+    bp_mean_priority = (220052, )
+    temperature_priority = (223762, 223761, )
     hr_priority = (220045, )
     category_priorities = {
         'bp_systolic': bp_systolic_priority,
