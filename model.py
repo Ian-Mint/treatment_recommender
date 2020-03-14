@@ -1,29 +1,36 @@
 import keras
-from keras.layers import Input, LSTM, Dense
-import numpy as np
+from keras.layers import LSTM, Dense, Masking, TimeDistributed, ThresholdedReLU
 
 
-def build_model(data_length) -> keras.Model:
-    # Only process ids for which no data is nan. This will exclude most ids until we get to the start of their data.
+def build_model(width, batch_size, n_timesteps, n_features, n_layers=1,
+                dropout=0, recurrent_dropout=0, output_threshold=0) -> keras.Model:
+    """
 
-    bp_input = Input(shape=(data_length, 1), name='bp')
-    lstm = LSTM(32)(bp_input)
+    :param output_threshold: output values below this will be set to zero
+    :param n_layers:
+    :param width:
+    :param batch_size:
+    :param n_timesteps:
+    :param n_features:
+    :param dropout:
+    :param recurrent_dropout:
+    :return:
+    """
+    lstm_kwargs = {
+        'return_sequences': True,
+        'dropout': dropout,
+        'recurrent_dropout': recurrent_dropout,
+        'stateful': True,
+    }
 
-    # Possibly useful for combining the non-sequential with the sequential data
-    # static_input = Input(shape=(5,), name='static_input')
-    # x = keras.layers.concatenate([lstm, static_input])
+    model = keras.Sequential()
+    model.add(Masking(mask_value=-1, batch_input_shape=[batch_size, n_timesteps, n_features]))
 
-    x = lstm
-    vasopressin_output = Dense(1, activation='sigmoid', name='vasopressin_output')(x)
-    # fluid_output = Dense(1, activation='sigmoid', name='fluid_output')(x)
+    for i in range(n_layers):
+        model.add(LSTM(width, **lstm_kwargs))
 
-    # Create model from inputs and outputs
-    # model = keras.Model(inputs=[bp_input, static_input], outputs=[vasopressin_output, fluid_output])
-    model = keras.Model(inputs=[bp_input, ], outputs=[vasopressin_output, ])
-
-    # Compile - For a mean squared error regression problem. `loss_weights` control the impact of each output.
-    # Different loss functions can be used by passing a dict or list to `loss`.
-    model.compile(optimizer='rmsprop', loss='mse', loss_weights=[1, 0.2])
+    model.add(TimeDistributed(Dense(1)))
+    model.compile(optimizer='rmsprop', loss='mse')
 
     print(model.summary())
     return model
