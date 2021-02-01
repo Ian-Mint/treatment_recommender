@@ -1,5 +1,30 @@
 # Treatment Recommender
 
+Rapid diagnosis and treatment is crucial for patients
+with sepsis, a leading cause of mortality in intensive care
+units. Currently, there is no consensus within the medi-
+cal community for a sepsis treatment protocol. Previous
+studies that have attempted to address this problem using
+machine learning techniques. These studies use reinforce-
+ment learning, leading to inherently biased models. We pro-
+pose a hybrid imitation-learning approach. First, predict-
+ing whether treatment is required using boosting and ig-
+noring patient history; next predicting prescription dosage
+using a long short-term memory regression. Such an ap-
+proach will be less biased than the reinforcement learn-
+ing approach, and has the potential to be fine-tuned using
+apprenticeship learning to achieve state of the art perfor-
+mance. See the [paper](https://github.com/Ian-Mint/treatment_recommender/blob/master/paper.pdf)
+for more details.
+
+## Usage
+
+See:
+
+`python train.py --help`
+
+for usage.
+
 ## Data Processing
 
 ### Cleaning
